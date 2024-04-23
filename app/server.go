@@ -15,22 +15,24 @@ func main() {
 }
 
 type Server struct {
-	QChan chan any
+	QChan    chan any
+	connChan chan net.Conn
 }
 
 func NewServer() *Server {
-	return &Server{}
+	return &Server{connChan: make(chan net.Conn)}
 }
 
 func (s *Server) Start() {
-	conn, err := s.createConnection()
+	listener, err := s.createConnection()
 
 	if err != nil {
 		log.Fatal("Could not create connection" + err.Error())
 	}
 
-	defer conn.Close()
-	go listen(conn)
+	defer listener.Close()
+	go handleConn(s.connChan)
+	go listen(listener, s)
 
 	<-s.QChan
 
@@ -49,7 +51,7 @@ func (s *Server) createConnection() (net.Listener, error) {
 	return l, nil
 }
 
-func listen(l net.Listener) {
+func listen(l net.Listener, s *Server) {
 
 	for {
 		conn, err := l.Accept()
@@ -58,13 +60,24 @@ func listen(l net.Listener) {
 		}
 
 		log.Println("connection", conn.RemoteAddr())
-		handleConn(conn)
 
-		defer conn.Close()
+		s.connChan <- conn
+
 	}
 }
 
-func handleConn(conn net.Conn) error {
+func handleConn(connChan chan net.Conn) {
+
+	for {
+
+		select {
+		case conn := <-connChan:
+			go redisService(conn)
+		}
+	}
+}
+
+func redisService(conn net.Conn) error {
 
 	for {
 		messageBuffer := make([]byte, 0, 1024)
