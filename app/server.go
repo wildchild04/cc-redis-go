@@ -1,7 +1,8 @@
 package main
 
 import (
-	"fmt"
+	"bufio"
+	"log"
 	"net"
 	"os"
 )
@@ -9,9 +10,8 @@ import (
 func main() {
 
 	server := NewServer()
-	server.start()
+	server.Start()
 
-	<-server.QChan
 }
 
 type Server struct {
@@ -22,38 +22,76 @@ func NewServer() *Server {
 	return &Server{}
 }
 
-func (s *Server) start() {
+func (s *Server) Start() {
+	conn, err := s.createConnection()
 
-	fmt.Println("Logs from your program will appear here!")
+	if err != nil {
+		log.Fatal("Could not create connection" + err.Error())
+	}
+
+	defer conn.Close()
+	go listen(conn)
+
+	<-s.QChan
+
+}
+
+func (s *Server) createConnection() (net.Listener, error) {
+
+	log.Println("Accepting connections")
 
 	l, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {
-		fmt.Println("Failed to bind to port 6379")
-		os.Exit(1)
-	}
-	conn, err := l.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
+		log.Println("Failed to bind to port 6379")
 		os.Exit(1)
 	}
 
-	go func(conn net.Conn) {
+	return l, nil
+}
 
-		buffer := make([]byte, 1024)
-		readCount, err := conn.Read(buffer)
+func listen(l net.Listener) {
 
+	for {
+		conn, err := l.Accept()
 		if err != nil {
-			fmt.Println("error reading incoming data", err)
+			log.Println("Error accepting connection", err)
 		}
 
-		message := string(buffer[:readCount:readCount])
-		fmt.Printf("message '%s'", message)
+		log.Println("connection", conn.RemoteAddr())
+		handleConn(conn)
+
+		defer conn.Close()
+	}
+}
+
+func handleConn(conn net.Conn) error {
+
+	for {
+		messageBuffer := make([]byte, 0, 1024)
+
+		reader := bufio.NewReader(conn)
+		reads := 0
+
+		for reads < 3 {
+
+			readLine, err := reader.ReadSlice('\n')
+			if err != nil {
+				return err
+			}
+			messageBuffer = append(messageBuffer, readLine...)
+			reads++
+		}
+
+		message := string(messageBuffer)
+		log.Printf("message \n'''\n%s'''\n", message)
 
 		if message == "*1\r\n$4\r\nping\r\n" {
+			log.Println("Pong reply")
 			conn.Write([]byte("+PONG\r\n"))
+		} else {
+			conn.Write([]byte("+\r\n"))
 		}
 
-		conn.Close()
+	}
 
-	}(conn)
 }
