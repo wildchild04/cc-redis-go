@@ -1,10 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"log"
 	"net"
 	"os"
+
+	"github.com/codecrafters-io/redis-starter-go/app/services"
 )
 
 func main() {
@@ -72,39 +73,7 @@ func handleConn(connChan chan net.Conn) {
 
 		select {
 		case conn := <-connChan:
-			go redisService(conn)
+			go services.HandleConn(conn)
 		}
 	}
-}
-
-func redisService(conn net.Conn) error {
-
-	for {
-		messageBuffer := make([]byte, 0, 1024)
-
-		reader := bufio.NewReader(conn)
-		reads := 0
-
-		for reads < 3 {
-
-			readLine, err := reader.ReadSlice('\n')
-			if err != nil {
-				return err
-			}
-			messageBuffer = append(messageBuffer, readLine...)
-			reads++
-		}
-
-		message := string(messageBuffer)
-		log.Printf("message \n'''\n%s'''\n", message)
-
-		if message == "*1\r\n$4\r\nping\r\n" {
-			log.Println("Pong reply")
-			conn.Write([]byte("+PONG\r\n"))
-		} else {
-			conn.Write([]byte("+\r\n"))
-		}
-
-	}
-
 }
