@@ -7,28 +7,50 @@ In this challenge, you'll build a toy Redis clone that's capable of handling
 basic commands like `PING`, `SET` and `GET`. Along the way we'll learn about
 event loops, the Redis protocol and more.
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
-
-# Passing the first stage
-
-The entry point for your Redis implementation is in `app/server.go`. Study and
-uncomment the relevant code, and push your changes to pass the first stage:
+## Currently implemented
+These are the current redis commands implemented
 
 ```sh
-git add .
-git commit -m "pass 1st stage" # any msg
-git push origin master
+
+$ redis-cli ping
+PONG
+
+$ redis-cli echo test
+test
+
+$ redis-cli set test pog
+OK
+
+$ redis-cli get test
+"pog"
+
 ```
+---
+## How to run
 
-That's all!
+Requires
 
-# Stage 2 & beyond
+* Go version go1.22.2
+* redis-cli 6.0.16
+---
+Just run `./spawn_redis_server.sh` and you are in!
 
-Note: This section is for stages 2 and beyond.
+![alt wicked](https://cdn.betterttv.net/emote/5f9487731b017902db14d05e/3x.webp)
+```sh
+$ ./spawn_redis_server.sh
 
-1. Ensure you have `go (1.19)` installed locally
-1. Run `./spawn_redis_server.sh` to run your Redis server, which is implemented
-   in `app/server.go`.
-1. Commit your changes and run `git push origin master` to submit your solution
-   to CodeCrafters. Test output will be streamed to your terminal.
+2024/04/25 15:48:09 Accepting connections
+
+```
+---
+## Stages done
+
+| Task                         | Status   |
+|------------------------------|----------|
+| Bind to a port               | ✅        |
+| Respond to PING              | ✅        |
+| Respond to multiple PINGs    | ✅        |
+| Handle concurrent clients    | ✅        |
+| Implement the ECHO command   | ✅        |
+| Implement the SET & GET commands | ✅    |
+| Expiry                       | ✅        |

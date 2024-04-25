@@ -12,7 +12,7 @@ func Test_getCmdResponse(t *testing.T) {
 	tests := []struct {
 		input    parser.CmdInfo
 		expected []byte
-		store    map[string][]byte
+		store    map[string]KvsObject
 	}{
 		{
 			input: parser.CmdInfo{
@@ -32,8 +32,10 @@ func Test_getCmdResponse(t *testing.T) {
 				CmdName: GET,
 				Args:    []string{"test"},
 			},
-			store: map[string][]byte{
-				"test": []byte("pog"),
+			store: map[string]KvsObject{
+				"test": {
+					data: []byte("pog"),
+				},
 			},
 			expected: []byte("$3\r\npog\r\n"),
 		},
@@ -42,8 +44,24 @@ func Test_getCmdResponse(t *testing.T) {
 				CmdName: SET,
 				Args:    []string{"test", "pog"},
 			},
-			store:    map[string][]byte{},
+			store:    map[string]KvsObject{},
 			expected: []byte("+OK\r\n"),
+		},
+		{
+			input: parser.CmdInfo{
+				CmdName: SET,
+				Args:    []string{"test", "pog", "px", "100"},
+			},
+			store:    map[string]KvsObject{},
+			expected: []byte("+OK\r\n"),
+		},
+		{
+			input: parser.CmdInfo{
+				CmdName: SET,
+				Args:    []string{"test", "pog", "px"},
+			},
+			store:    map[string]KvsObject{},
+			expected: []byte("-Missing PX value\r\n"),
 		},
 	}
 
@@ -57,15 +75,21 @@ func Test_getCmdResponse(t *testing.T) {
 }
 
 type KvSMock struct {
-	store map[string][]byte
+	store map[string]KvsObject
 }
 
 func (kvs *KvSMock) Get(k string) ([]byte, bool) {
+
 	v, ok := kvs.store[k]
-	return v, ok
+	return v.data, ok
 }
 
 func (kvs *KvSMock) Set(k string, v []byte) bool {
-	kvs.store[k] = v
+	kvs.store[k] = KvsObject{data: v}
+	return true
+}
+
+func (kvs *KvSMock) SetWithOptions(k string, v []byte, op KvsOptions) bool {
+
 	return true
 }

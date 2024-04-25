@@ -1,10 +1,26 @@
 package services
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
+
+const NEVER_EXPIRE = -1
 
 type Kvs interface {
 	Set(k string, v []byte) bool
+	SetWithOptions(k string, v []byte, ops KvsOptions) bool
 	Get(k string) ([]byte, bool)
+}
+
+type KvsOptions struct {
+	expires time.Duration
+}
+
+type KvsObject struct {
+	data    []byte
+	created *time.Time
+	expires *time.Time
 }
 
 type kvSService struct {
@@ -17,15 +33,46 @@ func NewKvSService() Kvs {
 
 func (kvs *kvSService) Set(key string, value []byte) bool {
 
-	kvs.store.Store(key, value)
+	now := time.Now()
+	object := KvsObject{
+		data:    value,
+		created: &now,
+	}
 
+	kvs.store.Store(key, object)
+
+	return true
+}
+
+func (kvs *kvSService) SetWithOptions(key string, value []byte, options KvsOptions) bool {
+
+	obj := KvsObject{
+		data: value,
+	}
+	if options.expires != 0 {
+		kvs.stampObject(&obj, options.expires)
+	}
+
+	kvs.store.Store(key, obj)
 	return true
 }
 
 func (kvs *kvSService) Get(k string) ([]byte, bool) {
 
 	anyV, ok := kvs.store.Load(k)
-	v, ok := anyV.([]byte)
+	obj, ok := anyV.(KvsObject)
 
-	return v, ok
+	if obj.expires != nil && obj.expires.Before(time.Now()) {
+		return nil, false
+	}
+
+	return obj.data, ok
+}
+
+func (kvs *kvSService) stampObject(ko *KvsObject, ex time.Duration) {
+	created := time.Now()
+	expires := created.Add(ex * time.Millisecond)
+
+	ko.created = &created
+	ko.expires = &expires
 }
