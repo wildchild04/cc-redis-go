@@ -6,17 +6,26 @@ import (
 	"io"
 	"log"
 	"net"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/codecrafters-io/redis-starter-go/app/protocol/parser"
 )
 
 const (
+	//CMD names
 	PING = "ping"
 	ECHO = "echo"
 	SET  = "set"
 	GET  = "get"
 
-	NULLS = "_\r\n"
+	//RESP3 reply
+	NULLS     = "_\r\n"
+	NULL_BULK = "$-1\r\n"
+
+	//SET OPTIONS
+	PX = "px"
 )
 
 type RedisService struct {
@@ -62,7 +71,24 @@ func (rs *RedisService) getCmdResponse(cmdInfo parser.CmdInfo) []byte {
 	case ECHO:
 		return encodeSimpleString(cmdInfo.Args[0])
 	case SET:
-		ok := rs.kvs.Set(cmdInfo.Args[0], []byte(cmdInfo.Args[1]))
+		if len(cmdInfo.Args) < 2 {
+			return encodeSimpleError("Not enough args for SET: " + strings.Join(cmdInfo.Args, ","))
+		}
+		ok := false
+
+		key := cmdInfo.Args[0]
+		val := cmdInfo.Args[1]
+		if len(cmdInfo.Args) > 2 {
+
+			ops, err := buildKvsOptions(cmdInfo.Args[2:])
+			if err != nil {
+				return encodeSimpleError(err.Error())
+			}
+			ok = rs.kvs.SetWithOptiopns(key, []byte(val), ops)
+		} else {
+
+			ok = rs.kvs.Set(key, []byte(val))
+		}
 		if ok {
 			return encodeSimpleString("OK")
 		} else {
@@ -73,7 +99,7 @@ func (rs *RedisService) getCmdResponse(cmdInfo parser.CmdInfo) []byte {
 		if ok {
 			return encodeBulkArray(value)
 		} else {
-			return []byte(NULLS)
+			return []byte(NULL_BULK)
 		}
 	}
 
@@ -85,8 +111,8 @@ func encodeBulkArray(s ...[]byte) []byte {
 	buffer := make([]byte, 0, 1024)
 	for i := range s {
 		buffer = append(buffer, '$')
-		size := byte('0' + len(s[i]))
-		buffer = append(buffer, size)
+		size := strconv.Itoa(len(s[i]))
+		buffer = append(buffer, size...)
 		buffer = append(buffer, parser.CRNL...)
 		buffer = append(buffer, s[i]...)
 		buffer = append(buffer, parser.CRNL...)
@@ -109,6 +135,36 @@ func encodeSimpleError(s string) []byte {
 	byteResp = append(byteResp, addCRNL(s)...)
 	return byteResp
 }
+
 func addCRNL(s string) []byte {
 	return []byte(fmt.Sprintf("%s\r\n", s))
+}
+
+func buildKvsOptions(args []string) (KvsOptions, error) {
+
+	ops := KvsOptions{}
+	processedLines := 0
+	for processedLines < len(args) {
+
+		switch args[processedLines] {
+		case PX:
+			if processedLines+1 >= len(args) {
+				return KvsOptions{}, fmt.Errorf("Missing PX value")
+			}
+			processedLines++
+			pxArg := args[processedLines]
+			pxNumericVal, err := strconv.Atoi(pxArg)
+			if err != nil {
+				return KvsOptions{}, fmt.Errorf("PX value is not a number: %s", pxArg)
+			}
+			ops.expires = time.Duration(pxNumericVal)
+
+			processedLines++
+		default:
+			processedLines++
+		}
+
+	}
+
+	return ops, nil
 }

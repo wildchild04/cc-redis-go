@@ -58,10 +58,32 @@ func Test_getCmdInfo(t *testing.T) {
 		expectError bool
 	}{
 		{
+
+			input: "*1\r\n$4\r\nping\r\n",
+			expected: CmdInfo{
+				CmdName: "ping",
+				Args:    []string{},
+			},
+		},
+		{
 			input: "*2\r\n$4\r\necho\r\n$3\r\nhey\r\n",
 			expected: CmdInfo{
 				CmdName: "echo",
 				Args:    []string{"hey"},
+			},
+		},
+		{
+			input: "*3\r\n$3\r\nset\r\n$4\r\ntest\r\n$3\r\npog\r\n",
+			expected: CmdInfo{
+				CmdName: "set",
+				Args:    []string{"test", "pog"},
+			},
+		},
+		{
+			input: "*2\r\n$3\r\nget\r\n$4\r\ntest",
+			expected: CmdInfo{
+				CmdName: "get",
+				Args:    []string{"test"},
 			},
 		},
 	}
