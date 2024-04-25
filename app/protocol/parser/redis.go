@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 )
 
 const (
 	//parsing
-	CRLN = "\r\n"
+	CRNL = "\r\n"
 	LN   = '\n'
 
 	//RESP
@@ -49,20 +50,20 @@ func (p *Parser) GetCmdInfo() (CmdInfo, error) {
 
 	case RESP_ARRAY:
 
-		arraySizeByte, err := p.input.ReadByte()
+		arraySizeByte, err := p.input.ReadString('\n')
+		arraySizeByte = strings.TrimRight(arraySizeByte, CRNL)
 
 		if err != nil {
 
 			return CmdInfo{}, fmt.Errorf("Could not read array size: %s", err)
 		}
-		arraySize, err := asciiByteToInt(arraySizeByte)
+		arraySize, err := strconv.Atoi(arraySizeByte)
 
 		if err != nil {
 			return CmdInfo{}, fmt.Errorf("Could not read array size: %s", err)
 
 		}
 
-		p.input.ReadBytes(LN)
 		lines, err := p.bulkStringToStringSlice(arraySize)
 
 		if err != nil {
@@ -99,10 +100,16 @@ func (p *Parser) bulkStringToStringSlice(size int) ([]string, error) {
 				return nil, fmt.Errorf("Could read bulk string first line: %s", err)
 			}
 
-			lineByte = strings.TrimRight(lineByte, CRLN)
-			dataSize, err := asciiByteToInt(lineByte[1])
+			lineByte = strings.TrimRight(lineByte, CRNL)
+			lineByte = strings.TrimLeft(lineByte, string(RESP_BULK_STRING))
+			dataSize, err := strconv.Atoi(lineByte)
+
+			if err != nil {
+				return nil, fmt.Errorf("data size atoi err: %s", err)
+			}
+
 			dataString, err := p.input.ReadString(LN)
-			dataString = strings.TrimRight(dataString, CRLN)
+			dataString = strings.TrimRight(dataString, CRNL)
 
 			if !(len(dataString) == dataSize) {
 				return nil, fmt.Errorf("data size does not match data, size:%d data:%s", dataSize, dataString)

@@ -26,6 +26,11 @@ func Test_bulkStringToStringSlice(t *testing.T) {
 			size:     2,
 			expected: []string{"echo", "hey"},
 		},
+		{
+			input:    "$10\r\nstrawberry\r\n$3\r\nhey\r\n",
+			size:     2,
+			expected: []string{"strawberry", "hey"},
+		},
 	}
 
 	for _, tc := range tests {

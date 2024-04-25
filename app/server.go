@@ -18,10 +18,11 @@ func main() {
 type Server struct {
 	QChan    chan any
 	connChan chan net.Conn
+	rs       *services.RedisService
 }
 
 func NewServer() *Server {
-	return &Server{connChan: make(chan net.Conn)}
+	return &Server{connChan: make(chan net.Conn), rs: services.NewRedisService()}
 }
 
 func (s *Server) Start() {
@@ -32,7 +33,7 @@ func (s *Server) Start() {
 	}
 
 	defer listener.Close()
-	go handleConn(s.connChan)
+	go handleConn(s.connChan, s.rs)
 	go listen(listener, s)
 
 	<-s.QChan
@@ -67,13 +68,13 @@ func listen(l net.Listener, s *Server) {
 	}
 }
 
-func handleConn(connChan chan net.Conn) {
+func handleConn(connChan chan net.Conn, rs *services.RedisService) {
 
 	for {
 
 		select {
 		case conn := <-connChan:
-			go services.HandleConn(conn)
+			go rs.HandleConn(conn)
 		}
 	}
 }
