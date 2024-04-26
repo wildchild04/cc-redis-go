@@ -89,7 +89,6 @@ func (kvs *KvSMock) Set(k string, v []byte) bool {
 	return true
 }
 
-func (kvs *KvSMock) SetWithOptiopns(k string, v []byte, op KvsOptions) bool {
-
+func (kvs *KvSMock) SetWithOptions(k string, v []byte, op KvsOptions) bool {
 	return true
 }

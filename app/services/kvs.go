@@ -9,7 +9,7 @@ const NEVER_EXPIRE = -1
 
 type Kvs interface {
 	Set(k string, v []byte) bool
-	SetWithOptiopns(k string, v []byte, ops KvsOptions) bool
+	SetWithOptions(k string, v []byte, ops KvsOptions) bool
 	Get(k string) ([]byte, bool)
 }
 
@@ -22,6 +22,7 @@ type KvsObject struct {
 	created *time.Time
 	expires *time.Time
 }
+
 type kvSService struct {
 	store *sync.Map
 }
@@ -43,7 +44,8 @@ func (kvs *kvSService) Set(key string, value []byte) bool {
 	return true
 }
 
-func (kvs *kvSService) SetWithOptiopns(key string, value []byte, options KvsOptions) bool {
+
+func (kvs *kvSService) SetWithOptions(key string, value []byte, options KvsOptions) bool {
 
 	obj := KvsObject{
 		data: value,
@@ -74,5 +76,4 @@ func (kvs *kvSService) stampObject(ko *KvsObject, ex time.Duration) {
 
 	ko.created = &created
 	ko.expires = &expires
-
 }
