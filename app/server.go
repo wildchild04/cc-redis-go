@@ -19,7 +19,8 @@ func main() {
 
 const (
 	// Server options
-	PORT = "--port"
+	PORT       = "--port"
+	REPLICA_OF = "--replicaof"
 )
 
 type Server struct {
@@ -30,8 +31,10 @@ type Server struct {
 }
 
 type serverOptions struct {
-	port int
-	role string
+	port       int
+	role       string
+	masterHost string
+	masterPort int
 }
 
 func NewServer() *Server {
@@ -43,6 +46,11 @@ func (s *Server) Start() {
 	serverOps := buildServerOptions()
 	s.serverInfo[info.SERVER_ROLE] = serverOps.role
 	s.serverInfo[info.SERVER_PORT] = strconv.Itoa(serverOps.port)
+
+	if s.serverInfo[info.SERVER_ROLE] == info.ROLE_SLAVE {
+		s.serverInfo[info.SERVER_MASTER_HOST] = serverOps.masterHost
+		s.serverInfo[info.SERVER_MASTER_PORT] = strconv.Itoa(serverOps.masterPort)
+	}
 
 	log.Println("Starting server\n INFO", s.serverInfo)
 	var listener net.Listener
@@ -122,22 +130,39 @@ func buildServerOptions() serverOptions {
 	args := os.Args
 	ops := serverOptions{}
 	ops.port = 6379
-	ops.role = "master"
+	ops.role = info.ROLE_MASTER
 
 	processedArgs := 0
 	for processedArgs < len(args) {
 		switch args[processedArgs] {
 		case PORT:
 			if processedArgs+1 >= len(args) {
-				log.Fatal("missing port argutmen")
+				log.Fatal("missing port argument")
 			}
 			processedArgs++
 			port, err := strconv.Atoi(args[processedArgs])
 			if err != nil {
-				log.Fatal("Could not get the port value: " + err.Error())
+				log.Fatal("Could not get the port value:" + err.Error())
 			}
 
 			ops.port = port
+		case REPLICA_OF:
+
+			if processedArgs+2 >= len(args) {
+				log.Fatal("missing replica of arguments")
+			}
+			processedArgs++
+			masterHost := args[processedArgs]
+			processedArgs++
+			masterPort, err := strconv.Atoi(args[processedArgs])
+			if err != nil {
+				log.Fatal("Could not get master port value:" + err.Error())
+			}
+
+			ops.masterHost = masterHost
+			ops.masterPort = masterPort
+			ops.role = info.ROLE_SLAVE
+
 		default:
 			processedArgs++
 		}
