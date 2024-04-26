@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"testing"
 
 	"github.com/codecrafters-io/redis-starter-go/app/protocol/parser"
@@ -13,6 +14,7 @@ func Test_getCmdResponse(t *testing.T) {
 		input    parser.CmdInfo
 		expected []byte
 		store    map[string]KvsObject
+		ctx      context.Context
 	}{
 		{
 			input: parser.CmdInfo{
@@ -67,7 +69,7 @@ func Test_getCmdResponse(t *testing.T) {
 
 	for _, tc := range tests {
 		rs := RedisService{&KvSMock{tc.store}}
-		got := rs.getCmdResponse(tc.input)
+		got := rs.getCmdResponse(tc.input, tc.ctx)
 
 		assert.Equal(t, tc.expected, got)
 	}

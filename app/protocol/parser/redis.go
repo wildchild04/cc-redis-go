@@ -137,7 +137,7 @@ func isBulkStringDataType(b byte) bool {
 func getCmdName(cmdLines []string) (string, error) {
 
 	if len(cmdLines) > 0 {
-		return cmdLines[0], nil
+		return strings.ToLower(cmdLines[0]), nil
 	}
 
 	return "", fmt.Errorf("cmd lines might not be cmd data")

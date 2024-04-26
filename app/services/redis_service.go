@@ -2,6 +2,7 @@ package services
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codecrafters-io/redis-starter-go/app/info"
 	"github.com/codecrafters-io/redis-starter-go/app/protocol/parser"
 )
 
@@ -19,6 +21,7 @@ const (
 	ECHO = "echo"
 	SET  = "set"
 	GET  = "get"
+	INFO = "info"
 
 	//RESP3 reply
 	NULLS     = "_\r\n"
@@ -26,6 +29,9 @@ const (
 
 	//SET OPTIONS
 	PX = "px"
+
+	// ctx value
+	SERVER_INFO = "server-info"
 )
 
 type RedisService struct {
@@ -36,7 +42,7 @@ func NewRedisService() *RedisService {
 	return &RedisService{NewKvSService()}
 }
 
-func (rs *RedisService) HandleConn(conn net.Conn) {
+func (rs *RedisService) HandleConn(conn net.Conn, ctx context.Context) {
 
 	defer log.Println("clossing conn:", conn.RemoteAddr())
 	defer conn.Close()
@@ -55,14 +61,14 @@ func (rs *RedisService) HandleConn(conn net.Conn) {
 			return
 		}
 
-		resp := rs.getCmdResponse(cmd)
+		resp := rs.getCmdResponse(cmd, ctx)
 		log.Printf("response to %s : %s", cmd, resp)
 		conn.Write(resp)
 	}
 
 }
 
-func (rs *RedisService) getCmdResponse(cmdInfo parser.CmdInfo) []byte {
+func (rs *RedisService) getCmdResponse(cmdInfo parser.CmdInfo, ctx context.Context) []byte {
 
 	switch cmdInfo.CmdName {
 
@@ -97,16 +103,24 @@ func (rs *RedisService) getCmdResponse(cmdInfo parser.CmdInfo) []byte {
 	case GET:
 		value, ok := rs.kvs.Get(cmdInfo.Args[0])
 		if ok {
-			return encodeBulkArray(value)
+			return encodeBulkArray([][]byte{value})
 		} else {
 			return []byte(NULL_BULK)
 		}
+
+	case INFO:
+		serverInfo := ctx.Value(SERVER_INFO).(info.ServerInfo)
+		role := serverInfo[info.SERVER_ROLE]
+
+		response := fmt.Sprintf("%s:%s", info.SERVER_ROLE, role)
+		return encodeBulkArray([][]byte{[]byte(response)})
+
 	}
 
 	return encodeSimpleString("UNKNOWN CMD")
 }
 
-func encodeBulkArray(s ...[]byte) []byte {
+func encodeBulkArray(s [][]byte) []byte {
 
 	buffer := make([]byte, 0, 1024)
 	for i := range s {

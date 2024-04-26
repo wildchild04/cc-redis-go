@@ -1,40 +1,50 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net"
 	"os"
 	"strconv"
 
+	"github.com/codecrafters-io/redis-starter-go/app/info"
 	"github.com/codecrafters-io/redis-starter-go/app/services"
+	"github.com/google/uuid"
 )
 
 func main() {
-	server := NewServer()
-	server.Start()
+	s := NewServer()
+	s.Start()
 }
 
 const (
+	// Server options
 	PORT = "--port"
 )
 
 type Server struct {
-	QChan    chan any
-	connChan chan net.Conn
-	rs       *services.RedisService
+	QChan      chan any
+	connChan   chan net.Conn
+	serverInfo info.ServerInfo
+	rs         *services.RedisService
 }
 
 type serverOptions struct {
 	port int
+	role string
 }
 
 func NewServer() *Server {
-	return &Server{connChan: make(chan net.Conn), rs: services.NewRedisService()}
+	return &Server{connChan: make(chan net.Conn), rs: services.NewRedisService(), serverInfo: make(info.ServerInfo)}
 }
 
 func (s *Server) Start() {
 
 	serverOps := buildServerOptions()
+	s.serverInfo[info.SERVER_ROLE] = serverOps.role
+	s.serverInfo[info.SERVER_PORT] = strconv.Itoa(serverOps.port)
+
+	log.Println("Starting server\n INFO", s.serverInfo)
 	var listener net.Listener
 	var err error
 
@@ -49,7 +59,7 @@ func (s *Server) Start() {
 	}
 
 	defer listener.Close()
-	go handleConn(s.connChan, s.rs)
+	go s.handleConn(s.connChan, s.rs)
 	go listen(listener, s)
 
 	<-s.QChan
@@ -75,6 +85,25 @@ func (s *Server) createConnection(port int) (net.Listener, error) {
 	return l, nil
 }
 
+func (s *Server) handleConn(connChan chan net.Conn, rs *services.RedisService) {
+
+	for {
+		select {
+		case conn := <-connChan:
+			go rs.HandleConn(conn, s.buildCtx())
+		}
+	}
+}
+
+func (s *Server) buildCtx() context.Context {
+	ctx := context.Background()
+	ctx = context.WithoutCancel(ctx)
+	ctx = context.WithValue(ctx, info.CTX_SESSION_ID, uuid.New())
+	ctx = context.WithValue(ctx, info.CTX_SERVER_INFO, s.serverInfo)
+
+	return ctx
+}
+
 func listen(l net.Listener, s *Server) {
 
 	for {
@@ -89,19 +118,11 @@ func listen(l net.Listener, s *Server) {
 	}
 }
 
-func handleConn(connChan chan net.Conn, rs *services.RedisService) {
-
-	for {
-		select {
-		case conn := <-connChan:
-			go rs.HandleConn(conn)
-		}
-	}
-}
-
 func buildServerOptions() serverOptions {
 	args := os.Args
 	ops := serverOptions{}
+	ops.port = 6379
+	ops.role = "master"
 
 	processedArgs := 0
 	for processedArgs < len(args) {
