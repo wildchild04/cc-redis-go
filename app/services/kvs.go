@@ -44,6 +44,7 @@ func (kvs *kvSService) Set(key string, value []byte) bool {
 	return true
 }
 
+
 func (kvs *kvSService) SetWithOptions(key string, value []byte, options KvsOptions) bool {
 
 	obj := KvsObject{

@@ -84,6 +84,7 @@ func (rs *RedisService) getCmdResponse(cmdInfo parser.CmdInfo) []byte {
 			if err != nil {
 				return encodeSimpleError(err.Error())
 			}
+      
 			ok = rs.kvs.SetWithOptions(key, []byte(val), ops)
 		} else {
 

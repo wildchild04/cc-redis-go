@@ -90,6 +90,5 @@ func (kvs *KvSMock) Set(k string, v []byte) bool {
 }
 
 func (kvs *KvSMock) SetWithOptions(k string, v []byte, op KvsOptions) bool {
-
 	return true
 }
