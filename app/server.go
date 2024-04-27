@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/codecrafters-io/redis-starter-go/app/info"
+	"github.com/codecrafters-io/redis-starter-go/app/replication"
 	"github.com/codecrafters-io/redis-starter-go/app/services"
 	"github.com/google/uuid"
 )
@@ -54,8 +55,17 @@ func (s *Server) Start() {
 	s.serverInfo[info.SERVER_PORT] = strconv.Itoa(serverOps.port)
 
 	if s.serverInfo[info.SERVER_ROLE] == info.ROLE_SLAVE {
+		portString := strconv.Itoa(serverOps.masterPort)
 		s.serverInfo[info.SERVER_MASTER_HOST] = serverOps.masterHost
-		s.serverInfo[info.SERVER_MASTER_PORT] = strconv.Itoa(serverOps.masterPort)
+		s.serverInfo[info.SERVER_MASTER_PORT] = portString
+
+		masterConn, err := net.Dial("tcp", serverOps.masterHost+":"+portString)
+
+		if err != nil {
+			log.Println("could not connect to master")
+		}
+
+		go replication.HandleSlaveConn(masterConn, s.buildCtx())
 	}
 
 	s.serverInfo[info.SERVER_MASTER_REPLID] = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"

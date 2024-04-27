@@ -13,6 +13,7 @@ import (
 
 	"github.com/codecrafters-io/redis-starter-go/app/info"
 	"github.com/codecrafters-io/redis-starter-go/app/protocol/parser"
+	respencoding "github.com/codecrafters-io/redis-starter-go/app/protocol/resp_encoding"
 )
 
 const (
@@ -73,12 +74,12 @@ func (rs *RedisService) getCmdResponse(cmdInfo parser.CmdInfo, ctx context.Conte
 	switch cmdInfo.CmdName {
 
 	case PING:
-		return encodeSimpleString("PONG")
+		return respencoding.EncodeSimpleString("PONG")
 	case ECHO:
-		return encodeSimpleString(cmdInfo.Args[0])
+		return respencoding.EncodeSimpleString(cmdInfo.Args[0])
 	case SET:
 		if len(cmdInfo.Args) < 2 {
-			return encodeSimpleError("Not enough args for SET: " + strings.Join(cmdInfo.Args, ","))
+			return respencoding.EncodeSimpleError("Not enough args for SET: " + strings.Join(cmdInfo.Args, ","))
 		}
 		ok := false
 
@@ -88,7 +89,7 @@ func (rs *RedisService) getCmdResponse(cmdInfo parser.CmdInfo, ctx context.Conte
 
 			ops, err := buildKvsOptions(cmdInfo.Args[2:])
 			if err != nil {
-				return encodeSimpleError(err.Error())
+				return respencoding.EncodeSimpleError(err.Error())
 			}
 			ok = rs.kvs.SetWithOptions(key, []byte(val), ops)
 		} else {
@@ -96,14 +97,14 @@ func (rs *RedisService) getCmdResponse(cmdInfo parser.CmdInfo, ctx context.Conte
 			ok = rs.kvs.Set(key, []byte(val))
 		}
 		if ok {
-			return encodeSimpleString("OK")
+			return respencoding.EncodeSimpleString("OK")
 		} else {
-			return encodeSimpleError("ERR: could not store k/v")
+			return respencoding.EncodeSimpleError("ERR: could not store k/v")
 		}
 	case GET:
 		value, ok := rs.kvs.Get(cmdInfo.Args[0])
 		if ok {
-			return encodeBulkStringArray([][]byte{value})
+			return respencoding.EncodeBulkStringArray([][]byte{value})
 		} else {
 			return []byte(NULL_BULK)
 		}
@@ -111,57 +112,14 @@ func (rs *RedisService) getCmdResponse(cmdInfo parser.CmdInfo, ctx context.Conte
 	case INFO:
 
 		if len(cmdInfo.Args) < 1 {
-			return encodeBulckString(info.BuildInfo("", ctx))
+			return respencoding.EncodeBulckString(info.BuildInfo("", ctx))
 		} else {
-			return encodeBulckString(info.BuildInfo(cmdInfo.Args[0], ctx))
+			return respencoding.EncodeBulckString(info.BuildInfo(cmdInfo.Args[0], ctx))
 		}
 
 	}
 
-	return encodeSimpleString("UNKNOWN CMD")
-}
-
-func encodeBulckString(s []byte) []byte {
-
-	res := make([]byte, 0, len(s)+5)
-	res = append(res, '$')
-	res = append(res, []byte(strconv.Itoa(len(s)))...)
-	res = append(res, '\r')
-	res = append(res, '\n')
-	res = append(res, s...)
-	res = append(res, '\r')
-	res = append(res, '\n')
-
-	return res
-}
-
-func encodeBulkStringArray(s [][]byte) []byte {
-
-	buffer := make([]byte, 0, 1024)
-	for _, i := range s {
-		buffer = append(buffer, encodeBulckString(i)...)
-	}
-
-	return buffer
-}
-
-func encodeSimpleString(s string) []byte {
-	byteResp := make([]byte, 0, len(s)+3)
-	byteResp = append(byteResp, '+')
-	byteResp = append(byteResp, addCRNL(s)...)
-	return byteResp
-}
-
-func encodeSimpleError(s string) []byte {
-
-	byteResp := make([]byte, 0, len(s)+3)
-	byteResp = append(byteResp, '-')
-	byteResp = append(byteResp, addCRNL(s)...)
-	return byteResp
-}
-
-func addCRNL(s string) []byte {
-	return []byte(fmt.Sprintf("%s\r\n", s))
+	return respencoding.EncodeSimpleString("UNKNOWN CMD")
 }
 
 func buildKvsOptions(args []string) (KvsOptions, error) {
