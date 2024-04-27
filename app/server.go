@@ -28,6 +28,7 @@ type Server struct {
 	connChan   chan net.Conn
 	serverInfo info.ServerInfo
 	rs         *services.RedisService
+	metrics    *info.Metrics
 }
 
 type serverOptions struct {
@@ -38,7 +39,12 @@ type serverOptions struct {
 }
 
 func NewServer() *Server {
-	return &Server{connChan: make(chan net.Conn), rs: services.NewRedisService(), serverInfo: make(info.ServerInfo)}
+	return &Server{
+		connChan:   make(chan net.Conn),
+		rs:         services.NewRedisService(),
+		serverInfo: make(info.ServerInfo),
+		metrics:    info.NewMetrics(),
+	}
 }
 
 func (s *Server) Start() {
@@ -51,6 +57,8 @@ func (s *Server) Start() {
 		s.serverInfo[info.SERVER_MASTER_HOST] = serverOps.masterHost
 		s.serverInfo[info.SERVER_MASTER_PORT] = strconv.Itoa(serverOps.masterPort)
 	}
+
+	s.serverInfo[info.SERVER_MASTER_REPLID] = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
 
 	log.Println("Starting server\n INFO", s.serverInfo)
 	var listener net.Listener
@@ -108,6 +116,7 @@ func (s *Server) buildCtx() context.Context {
 	ctx = context.WithoutCancel(ctx)
 	ctx = context.WithValue(ctx, info.CTX_SESSION_ID, uuid.New())
 	ctx = context.WithValue(ctx, info.CTX_SERVER_INFO, s.serverInfo)
+	ctx = context.WithValue(ctx, info.CTX_METRICS, s.metrics)
 
 	return ctx
 }

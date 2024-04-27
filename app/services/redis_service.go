@@ -30,8 +30,8 @@ const (
 	//SET OPTIONS
 	PX = "px"
 
-	// ctx value
-	SERVER_INFO = "server-info"
+	//info cmd
+	REPLICATION = "#Replication"
 )
 
 type RedisService struct {
@@ -62,7 +62,7 @@ func (rs *RedisService) HandleConn(conn net.Conn, ctx context.Context) {
 		}
 
 		resp := rs.getCmdResponse(cmd, ctx)
-		log.Printf("response to %s : %s", cmd, resp)
+		log.Printf("response to %+v:\n%s\n", cmd, resp)
 		conn.Write(resp)
 	}
 
@@ -103,33 +103,43 @@ func (rs *RedisService) getCmdResponse(cmdInfo parser.CmdInfo, ctx context.Conte
 	case GET:
 		value, ok := rs.kvs.Get(cmdInfo.Args[0])
 		if ok {
-			return encodeBulkArray([][]byte{value})
+			return encodeBulkStringArray([][]byte{value})
 		} else {
 			return []byte(NULL_BULK)
 		}
 
 	case INFO:
-		serverInfo := ctx.Value(SERVER_INFO).(info.ServerInfo)
-		role := serverInfo[info.SERVER_ROLE]
 
-		response := fmt.Sprintf("%s:%s", info.SERVER_ROLE, role)
-		return encodeBulkArray([][]byte{[]byte(response)})
+		if len(cmdInfo.Args) < 1 {
+			return encodeBulckString(info.BuildInfo("", ctx))
+		} else {
+			return encodeBulckString(info.BuildInfo(cmdInfo.Args[0], ctx))
+		}
 
 	}
 
 	return encodeSimpleString("UNKNOWN CMD")
 }
 
-func encodeBulkArray(s [][]byte) []byte {
+func encodeBulckString(s []byte) []byte {
+
+	res := make([]byte, 0, len(s)+5)
+	res = append(res, '$')
+	res = append(res, []byte(strconv.Itoa(len(s)))...)
+	res = append(res, '\r')
+	res = append(res, '\n')
+	res = append(res, s...)
+	res = append(res, '\r')
+	res = append(res, '\n')
+
+	return res
+}
+
+func encodeBulkStringArray(s [][]byte) []byte {
 
 	buffer := make([]byte, 0, 1024)
-	for i := range s {
-		buffer = append(buffer, '$')
-		size := strconv.Itoa(len(s[i]))
-		buffer = append(buffer, size...)
-		buffer = append(buffer, parser.CRNL...)
-		buffer = append(buffer, s[i]...)
-		buffer = append(buffer, parser.CRNL...)
+	for _, i := range s {
+		buffer = append(buffer, encodeBulckString(i)...)
 	}
 
 	return buffer
