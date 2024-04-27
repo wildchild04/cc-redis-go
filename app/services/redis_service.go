@@ -18,11 +18,12 @@ import (
 
 const (
 	//CMD names
-	PING = "ping"
-	ECHO = "echo"
-	SET  = "set"
-	GET  = "get"
-	INFO = "info"
+	PING     = "ping"
+	ECHO     = "echo"
+	SET      = "set"
+	GET      = "get"
+	INFO     = "info"
+	REPLCONF = "replconf"
 
 	//RESP3 reply
 	NULLS     = "_\r\n"
@@ -52,8 +53,7 @@ func (rs *RedisService) HandleConn(conn net.Conn, ctx context.Context) {
 		reader.Peek(2)
 		p := parser.NewParser(reader)
 
-		cmd, err := p.GetCmdInfo()
-
+		incoming, err := p.ParseIncomingData()
 		if err != nil {
 			if err == io.EOF {
 				return
@@ -62,17 +62,24 @@ func (rs *RedisService) HandleConn(conn net.Conn, ctx context.Context) {
 			return
 		}
 
-		resp := rs.getCmdResponse(cmd, ctx)
-		log.Printf("response to %+v:\n%s\n", cmd, resp)
-		conn.Write(resp)
+		switch incoming.(type) {
+		case parser.CmdInfo:
+			cmd := incoming.(parser.CmdInfo)
+			resp := rs.getCmdResponse(&cmd, ctx)
+			log.Printf("response to %+v:\n%s\n", cmd, resp)
+			conn.Write(resp)
+		case parser.SimpleString:
+			log.Println("got simple string\n", incoming)
+		case parser.UnknownData:
+			log.Printf("got unknown data,\ndata type: '%c' \ndata: '%s'",
+				incoming.(parser.UnknownData).Dt, string(incoming.(parser.UnknownData).Data))
+		}
 	}
-
 }
 
-func (rs *RedisService) getCmdResponse(cmdInfo parser.CmdInfo, ctx context.Context) []byte {
+func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Context) []byte {
 
 	switch cmdInfo.CmdName {
-
 	case PING:
 		return respencoding.EncodeSimpleString("PONG")
 	case ECHO:
@@ -108,26 +115,24 @@ func (rs *RedisService) getCmdResponse(cmdInfo parser.CmdInfo, ctx context.Conte
 		} else {
 			return []byte(NULL_BULK)
 		}
-
 	case INFO:
-
 		if len(cmdInfo.Args) < 1 {
 			return respencoding.EncodeBulckString(info.BuildInfo("", ctx))
 		} else {
 			return respencoding.EncodeBulckString(info.BuildInfo(cmdInfo.Args[0], ctx))
 		}
-
+	case REPLCONF:
+		log.Println("Replication config received", cmdInfo)
+		return respencoding.EncodeSimpleString("OK")
 	}
 
 	return respencoding.EncodeSimpleString("UNKNOWN CMD")
 }
 
 func buildKvsOptions(args []string) (KvsOptions, error) {
-
 	ops := KvsOptions{}
 	processedLines := 0
 	for processedLines < len(args) {
-
 		switch args[processedLines] {
 		case PX:
 			if processedLines+1 >= len(args) {
@@ -145,8 +150,6 @@ func buildKvsOptions(args []string) (KvsOptions, error) {
 		default:
 			processedLines++
 		}
-
 	}
-
 	return ops, nil
 }

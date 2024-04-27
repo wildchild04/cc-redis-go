@@ -69,7 +69,7 @@ func Test_getCmdResponse(t *testing.T) {
 
 	for _, tc := range tests {
 		rs := RedisService{&KvSMock{tc.store}}
-		got := rs.getCmdResponse(tc.input, tc.ctx)
+		got := rs.getCmdResponse(&tc.input, tc.ctx)
 
 		assert.Equal(t, tc.expected, got)
 	}

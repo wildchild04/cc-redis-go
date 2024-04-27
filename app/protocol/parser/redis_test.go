@@ -103,6 +103,6 @@ func Test_getCmdInfo(t *testing.T) {
 			assert.Nil(t, err)
 		}
 
-		assert.Equal(t, tc.expected, got)
+		assert.Equal(t, &tc.expected, got)
 	}
 }

@@ -14,8 +14,11 @@ const (
 	LN   = '\n'
 
 	//RESP
-	RESP_ARRAY       DataType = '*'
-	RESP_BULK_STRING DataType = '$'
+	RESP_ARRAY         DataType = '*'
+	RESP_BULK_STRING   DataType = '$'
+	RESP_SIMPLE_STRING DataType = '+'
+
+	// CMD info
 )
 
 // RESP data type
@@ -25,16 +28,74 @@ type Parser struct {
 	input *bufio.Reader
 }
 
+// marker interface design pattern
+// golimorphism I guess
+// zoomers will not understand... design patterns KEKW
+type RespResponse interface {
+	respResponseType()
+}
+
 type CmdInfo struct {
 	CmdName string
 	Args    []string
 }
 
+func (cmdInfo CmdInfo) respResponseType() {}
+
+type UnknownData struct {
+	Dt   DataType
+	Data []byte
+}
+
+func (uk UnknownData) respResponseType() {}
+
+type SimpleString struct {
+	Data string
+}
+
+func (ss SimpleString) respResponseType() {}
+
 func NewParser(reader *bufio.Reader) *Parser {
 	return &Parser{input: reader}
 }
 
-func (p *Parser) GetCmdInfo() (CmdInfo, error) {
+func (p *Parser) GetCmdInfo() (*CmdInfo, error) {
+
+	res, err := p.ParseIncomingData()
+
+	if err != nil {
+		if err == io.EOF {
+			return nil, err
+		}
+		return nil, fmt.Errorf("could not parse incomind data, err:%s", err)
+	}
+
+	if cmdInfo, ok := res.(CmdInfo); ok {
+		return &cmdInfo, nil
+	} else {
+		return nil, fmt.Errorf("Incoming data is not a cmd, got:%T ", res)
+	}
+}
+
+func (p *Parser) GetSimpleStringResponse() (*SimpleString, error) {
+
+	res, err := p.ParseIncomingData()
+
+	if err != nil {
+		if err == io.EOF {
+			return nil, err
+		}
+		return nil, fmt.Errorf("could not parse incomind data, err:%s", err)
+	}
+
+	if simpleString, ok := res.(SimpleString); ok {
+		return &simpleString, nil
+	} else {
+		return nil, fmt.Errorf("Incoming data is not a cmd, got:%T ", res)
+	}
+}
+
+func (p *Parser) ParseIncomingData() (RespResponse, error) {
 
 	dataType, err := p.input.ReadByte()
 
@@ -49,8 +110,7 @@ func (p *Parser) GetCmdInfo() (CmdInfo, error) {
 	switch DataType(dataType) {
 
 	case RESP_ARRAY:
-
-		arraySizeByte, err := p.input.ReadString('\n')
+		arraySizeByte, err := p.input.ReadString(LN)
 		arraySizeByte = strings.TrimRight(arraySizeByte, CRNL)
 
 		if err != nil {
@@ -77,13 +137,23 @@ func (p *Parser) GetCmdInfo() (CmdInfo, error) {
 			return CmdInfo{}, fmt.Errorf("cmd name error: %s", err)
 		}
 		return CmdInfo{CmdName: cmdName, Args: lines[1:]}, nil
+	case RESP_SIMPLE_STRING:
+		data, err := p.input.ReadString(LN)
 
+		if err != nil {
+			return SimpleString{}, fmt.Errorf("error parsing simple string: %s", err)
+		}
+
+		return SimpleString{data}, nil
+	default:
+		unknowData := make([]byte, p.input.Buffered())
+		p.input.Read(unknowData)
+
+		return UnknownData{Dt: DataType(dataType), Data: unknowData}, nil
 	}
-	return CmdInfo{}, nil
 }
 
 func (p *Parser) bulkStringToStringSlice(size int) ([]string, error) {
-
 	res := make([]string, 0, size)
 	for range size {
 		peekOne, err := p.input.Peek(1)
@@ -116,10 +186,8 @@ func (p *Parser) bulkStringToStringSlice(size int) ([]string, error) {
 			}
 
 			res = append(res, dataString)
-
 		}
 	}
-
 	return res, nil
 }
 

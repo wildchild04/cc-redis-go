@@ -53,6 +53,7 @@ func (s *Server) Start() {
 	serverOps := buildServerOptions()
 	s.serverInfo[info.SERVER_ROLE] = serverOps.role
 	s.serverInfo[info.SERVER_PORT] = strconv.Itoa(serverOps.port)
+	s.serverInfo[info.SERVER_MASTER_REPLID] = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
 
 	if s.serverInfo[info.SERVER_ROLE] == info.ROLE_SLAVE {
 		portString := strconv.Itoa(serverOps.masterPort)
@@ -62,13 +63,11 @@ func (s *Server) Start() {
 		masterConn, err := net.Dial("tcp", serverOps.masterHost+":"+portString)
 
 		if err != nil {
-			log.Println("could not connect to master")
+			log.Fatal("could not connect to master, info:\n", s.serverInfo)
 		}
 
 		go replication.HandleSlaveConn(masterConn, s.buildCtx())
 	}
-
-	s.serverInfo[info.SERVER_MASTER_REPLID] = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
 
 	log.Println("Starting server\n INFO", s.serverInfo)
 	var listener net.Listener
