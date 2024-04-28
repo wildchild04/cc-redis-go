@@ -24,6 +24,7 @@ const (
 	GET      = "get"
 	INFO     = "info"
 	REPLCONF = "replconf"
+	PSYNC    = "psync"
 
 	//RESP3 reply
 	NULLS     = "_\r\n"
@@ -124,6 +125,9 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 	case REPLCONF:
 		log.Println("Replication config received", cmdInfo)
 		return respencoding.EncodeSimpleString("OK")
+	case PSYNC:
+		log.Println("Psync received", cmdInfo)
+		return respencoding.EncodeSimpleString("FULLRESYNC " + cmdInfo.Args[1] + " 0")
 	}
 
 	return respencoding.EncodeSimpleString("UNKNOWN CMD")

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 
 	"github.com/codecrafters-io/redis-starter-go/app/info"
 	"github.com/codecrafters-io/redis-starter-go/app/protocol/parser"
@@ -18,10 +19,16 @@ func HandleSlaveConn(conn net.Conn, ctx context.Context) {
 
 	reader := bufio.NewReader(conn)
 	parser := parser.NewParser(reader)
-	err := performMasterHandshake(conn, parser, ctx)
+	ok, err := performMasterHandshake(conn, parser, ctx)
 	if err != nil {
 		log.Println("handshake error" + err.Error())
+		return
 	}
+
+	if ok {
+		log.Println("Handshake sucessful")
+	}
+
 	for {
 
 		resp, err := parser.ParseIncomingData()
@@ -54,7 +61,7 @@ func handleResponse(response parser.RespResponse) {
 
 }
 
-func performMasterHandshake(conn net.Conn, p *parser.Parser, ctx context.Context) error {
+func performMasterHandshake(conn net.Conn, p *parser.Parser, ctx context.Context) (bool, error) {
 
 	serverInfo := ctx.Value(info.CTX_SERVER_INFO).(info.ServerInfo)
 	conn.Write(respencoding.EncodeArray([][]byte{[]byte("ping")}))
@@ -62,11 +69,11 @@ func performMasterHandshake(conn net.Conn, p *parser.Parser, ctx context.Context
 	pingResp, err := p.GetSimpleStringResponse()
 
 	if err != nil {
-		return fmt.Errorf("Handshake 1/3 failed: %s", err)
+		return false, fmt.Errorf("Handshake 1/3 failed: %s", err)
 	}
 
 	if pingResp.Data != "PONG\r\n" {
-		return fmt.Errorf("Handshake 1/3 failed, invalid ping reply: '%s'", pingResp.Data)
+		return false, fmt.Errorf("Handshake 1/3 failed, invalid ping reply: '%s'", pingResp.Data)
 	}
 
 	replConfData := [][]byte{[]byte("REPLCONF"), []byte("listening-port"), []byte(serverInfo[info.SERVER_PORT])}
@@ -76,11 +83,11 @@ func performMasterHandshake(conn net.Conn, p *parser.Parser, ctx context.Context
 	okRep, err := p.GetSimpleStringResponse()
 
 	if err != nil {
-		return fmt.Errorf("Handshake 2/3 failed: %s", err)
+		return false, fmt.Errorf("Handshake 2/3 failed: %s", err)
 	}
 
 	if okRep.Data != "OK\r\n" {
-		return fmt.Errorf("Handshake 2/3 failed, invalid REPLCONF reply: '%s'", pingResp.Data)
+		return false, fmt.Errorf("Handshake 2/3 failed, invalid REPLCONF reply: '%s'", pingResp.Data)
 	}
 
 	replConfData = [][]byte{[]byte("REPLCONF"), []byte("capa"), []byte("psync2")}
@@ -90,12 +97,29 @@ func performMasterHandshake(conn net.Conn, p *parser.Parser, ctx context.Context
 	okRep, err = p.GetSimpleStringResponse()
 
 	if err != nil {
-		return fmt.Errorf("Handshake 2/3 failed: %s", err)
+		return false, fmt.Errorf("Handshake 2/3 failed: %s", err)
 	}
 
 	if okRep.Data != "OK\r\n" {
-		return fmt.Errorf("Handshake 2/3 failed, invalid REPLCONF reply: '%s'", pingResp.Data)
+		return false, fmt.Errorf("Handshake 2/3 failed, invalid REPLCONF reply: '%s'", pingResp.Data)
 	}
 
-	return nil
+	replConfData = [][]byte{[]byte("PSYNC"), []byte("?"), []byte("-1")}
+	replConf = respencoding.EncodeArray(replConfData)
+	conn.Write(replConf)
+
+	fullSyncRep, err := p.GetSimpleStringResponse()
+
+	if err != nil {
+		return false, fmt.Errorf("Handshake 3/3 failed: %s", err)
+	}
+
+	fullSyncData := strings.TrimRight(fullSyncRep.Data, parser.CRNL)
+	dataSlice := strings.Split(fullSyncData, " ")
+
+	if len(dataSlice) != 3 && dataSlice[0] != "FULLSYNC" {
+		return false, fmt.Errorf("Handshake 3/3 failed: invalid full sync reply %s", fullSyncData)
+	}
+
+	return true, nil
 }
