@@ -80,6 +80,7 @@ func (rs *RedisService) HandleConn(conn net.Conn, ctx context.Context) {
 
 func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Context) []byte {
 
+	serverInfo := ctx.Value(info.CTX_SERVER_INFO).(info.ServerInfo)
 	switch cmdInfo.CmdName {
 	case PING:
 		return respencoding.EncodeSimpleString("PONG")
@@ -127,7 +128,7 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 		return respencoding.EncodeSimpleString("OK")
 	case PSYNC:
 		log.Println("Psync received", cmdInfo)
-		return respencoding.EncodeSimpleString("FULLRESYNC " + cmdInfo.Args[1] + " 0")
+		return respencoding.EncodeSimpleString("FULLRESYNC " + serverInfo[info.SERVER_MASTER_REPLID] + " 0")
 	}
 
 	return respencoding.EncodeSimpleString("UNKNOWN CMD")
