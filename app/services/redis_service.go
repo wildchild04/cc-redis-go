@@ -13,6 +13,7 @@ import (
 
 	"github.com/codecrafters-io/redis-starter-go/app/info"
 	"github.com/codecrafters-io/redis-starter-go/app/protocol/parser"
+	"github.com/codecrafters-io/redis-starter-go/app/protocol/rdb"
 	respencoding "github.com/codecrafters-io/redis-starter-go/app/protocol/resp_encoding"
 )
 
@@ -128,7 +129,17 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 		return respencoding.EncodeSimpleString("OK")
 	case PSYNC:
 		log.Println("Psync received", cmdInfo)
-		return respencoding.EncodeSimpleString("FULLRESYNC " + serverInfo[info.SERVER_MASTER_REPLID] + " 0")
+		resync := respencoding.EncodeSimpleString("FULLRESYNC " + serverInfo[info.SERVER_MASTER_REPLID] + " 0")
+		rdbFile := rdb.BuildRDB()
+		rdbFileSize := strconv.Itoa(len(rdbFile))
+		reply := make([]byte, 0, len(resync)+len(rdbFile)+10)
+		reply = append(reply, resync...)
+		reply = append(reply, '$')
+		reply = append(reply, rdbFileSize...)
+		reply = append(reply, []byte(parser.CRNL)...)
+		reply = append(reply, rdbFile...)
+
+		return reply
 	}
 
 	return respencoding.EncodeSimpleString("UNKNOWN CMD")

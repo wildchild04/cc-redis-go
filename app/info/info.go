@@ -64,6 +64,7 @@ func BuildInfo(variant string, ctx context.Context) []byte {
 	switch variant {
 	case INFO_REPL:
 		infoStrings = []string{
+			"#" + INFO_REPL,
 			buildInfoPair(SERVER_ROLE, si[SERVER_ROLE]),
 			buildInfoPair(SERVER_MASTER_REPLID, si[SERVER_MASTER_REPLID]),
 			buildInfoPair(SERVER_MASTER_REPL_OFFSET, strconv.FormatInt(metrics.GetReplOffset(), 10)),
