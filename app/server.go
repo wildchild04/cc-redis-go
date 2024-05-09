@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/codecrafters-io/redis-starter-go/app/info"
+	"github.com/codecrafters-io/redis-starter-go/app/protocol/parser"
 	"github.com/codecrafters-io/redis-starter-go/app/replication"
 	"github.com/codecrafters-io/redis-starter-go/app/services"
 	"github.com/google/uuid"
@@ -29,6 +30,7 @@ type Server struct {
 	connChan   chan net.Conn
 	serverInfo info.ServerInfo
 	rs         *services.RedisService
+	ss         replication.SlaveService
 	metrics    *info.Metrics
 }
 
@@ -40,11 +42,13 @@ type serverOptions struct {
 }
 
 func NewServer() *Server {
+	kvs := services.NewKvSService()
 	return &Server{
 		connChan:   make(chan net.Conn),
-		rs:         services.NewRedisService(),
+		rs:         services.NewRedisService(kvs),
 		serverInfo: make(info.ServerInfo),
 		metrics:    info.NewMetrics(),
+		ss:         replication.NewSlaveService(make(chan parser.CmdInfo), kvs),
 	}
 }
 
@@ -66,7 +70,11 @@ func (s *Server) Start() {
 			log.Fatal("could not connect to master, info:\n", s.serverInfo)
 		}
 
-		go replication.HandleSlaveConn(masterConn, s.buildCtx())
+		go s.ss.HandleSlaveConn(masterConn, s.buildCtx())
+	}
+
+	if s.serverInfo[info.SERVER_ROLE] == info.ROLE_MASTER {
+		go s.ss.HandleWriteCmd()
 	}
 
 	log.Println("Starting server\n INFO", s.serverInfo)
@@ -126,6 +134,10 @@ func (s *Server) buildCtx() context.Context {
 	ctx = context.WithValue(ctx, info.CTX_SESSION_ID, uuid.New())
 	ctx = context.WithValue(ctx, info.CTX_SERVER_INFO, s.serverInfo)
 	ctx = context.WithValue(ctx, info.CTX_METRICS, s.metrics)
+	if s.serverInfo[info.SERVER_ROLE] == info.ROLE_MASTER {
+		ctx = context.WithValue(ctx, info.CTX_REPLICATION_EVENTS, s.ss.GetEventChan())
+		ctx = context.WithValue(ctx, info.CTX_REPLACATION_REGISTRATION, s.ss.GetReplicaRegistrationChan())
+	}
 
 	return ctx
 }

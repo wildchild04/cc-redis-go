@@ -12,9 +12,73 @@ import (
 	"github.com/codecrafters-io/redis-starter-go/app/info"
 	"github.com/codecrafters-io/redis-starter-go/app/protocol/parser"
 	respencoding "github.com/codecrafters-io/redis-starter-go/app/protocol/resp_encoding"
+	"github.com/codecrafters-io/redis-starter-go/app/services"
 )
 
-func HandleSlaveConn(conn net.Conn, ctx context.Context) {
+type SlaveService interface {
+	RegisterReplica(conn net.Conn)
+	HandleWriteCmd()
+	GetEventChan() chan parser.CmdInfo
+	GetReplicaRegistrationChan() chan net.Conn
+	HandleSlaveConn(conn net.Conn, ctx context.Context)
+}
+
+type slaveServiceImp struct {
+	slavesConns          []net.Conn
+	replicationEventChan chan parser.CmdInfo
+	registerReplica      chan net.Conn
+	kvsService           services.Kvs
+}
+
+func (ss *slaveServiceImp) RegisterReplica(conn net.Conn) {
+	ss.slavesConns = append(ss.slavesConns, conn)
+	log.Printf("Connection from %s registered", conn.RemoteAddr())
+}
+
+func (ss *slaveServiceImp) GetEventChan() chan parser.CmdInfo {
+	return ss.replicationEventChan
+}
+
+func (ss *slaveServiceImp) GetReplicaRegistrationChan() chan net.Conn {
+	return ss.registerReplica
+}
+
+func NewSlaveService(repEventChan chan parser.CmdInfo, kvs services.Kvs) SlaveService {
+	return &slaveServiceImp{
+		slavesConns:          make([]net.Conn, 0, 5),
+		replicationEventChan: repEventChan,
+		registerReplica:      make(chan net.Conn),
+		kvsService:           kvs,
+	}
+}
+
+func (ss *slaveServiceImp) HandleWriteCmd() {
+	for {
+		select {
+		case cmd := <-ss.replicationEventChan:
+
+			forwardCmd := respencoding.EncodeArray([][]byte{[]byte(cmd.CmdName), []byte(cmd.Args[0]), []byte(cmd.Args[1])})
+
+			for _, conn := range ss.slavesConns {
+				conn.Write(forwardCmd)
+			}
+		case conn := <-ss.registerReplica:
+			ss.RegisterReplica(conn)
+
+		}
+	}
+}
+
+func (ss *slaveServiceImp) handleCmdFromMaster(cmdInfo parser.CmdInfo) {
+
+	switch cmdInfo.CmdName {
+	case services.SET:
+		ss.kvsService.Set(cmdInfo.Args[0], []byte(cmdInfo.Args[1]))
+
+	}
+}
+
+func (ss *slaveServiceImp) HandleSlaveConn(conn net.Conn, ctx context.Context) {
 	defer conn.Close()
 
 	reader := bufio.NewReader(conn)
@@ -27,6 +91,7 @@ func HandleSlaveConn(conn net.Conn, ctx context.Context) {
 
 	if ok {
 		log.Println("Handshake sucessful")
+		ss.RegisterReplica(conn)
 	}
 
 	for {
@@ -40,17 +105,18 @@ func HandleSlaveConn(conn net.Conn, ctx context.Context) {
 
 			log.Println("Error getting cmd from master", err)
 		} else {
-			handleResponse(resp)
+			ss.handleResponse(resp)
 		}
 	}
 
 }
 
-func handleResponse(response parser.RespResponse) {
+func (ss *slaveServiceImp) handleResponse(response parser.RespResponse) {
 
 	switch response.(type) {
 
 	case parser.CmdInfo:
+		ss.handleCmdFromMaster(response.(parser.CmdInfo))
 		log.Println("got cmd info:", response)
 	case parser.SimpleString:
 		log.Println("got simple string\n", response)

@@ -4,11 +4,14 @@ import (
 	"context"
 	"testing"
 
+	"github.com/codecrafters-io/redis-starter-go/app/info"
 	"github.com/codecrafters-io/redis-starter-go/app/protocol/parser"
 	"github.com/stretchr/testify/assert"
 )
 
 func Test_getCmdResponse(t *testing.T) {
+
+	ctx := context.WithValue(context.Background(), info.CTX_SERVER_INFO, make(info.ServerInfo))
 
 	tests := []struct {
 		input    parser.CmdInfo
@@ -69,9 +72,14 @@ func Test_getCmdResponse(t *testing.T) {
 
 	for _, tc := range tests {
 		rs := RedisService{&KvSMock{tc.store}}
-		got := rs.getCmdResponse(&tc.input, tc.ctx)
+		testCtx := tc.ctx
+		if tc.ctx == nil {
+			testCtx = ctx
+		}
+		got, register := rs.getCmdResponse(&tc.input, testCtx)
 
 		assert.Equal(t, tc.expected, got)
+		assert.False(t, register)
 	}
 
 }

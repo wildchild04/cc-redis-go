@@ -1,7 +1,6 @@
 package rdb
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,6 +30,5 @@ func Test_encodeString(t *testing.T) {
 			assert.Nil(t, err)
 		}
 		assert.Equal(t, tc.expected, got)
-		fmt.Println(cap(got))
 	}
 }

@@ -12,9 +12,11 @@ import (
 
 const (
 	// Ctx value
-	CTX_SERVER_INFO = "server-info"
-	CTX_SESSION_ID  = "session-id"
-	CTX_METRICS     = "metrics"
+	CTX_SERVER_INFO              = "server-info"
+	CTX_SESSION_ID               = "session-id"
+	CTX_METRICS                  = "metrics"
+	CTX_REPLICATION_EVENTS       = "replication-events"
+	CTX_REPLACATION_REGISTRATION = "replication-registration"
 
 	// Server inf
 	SERVER_ROLE               = "role"

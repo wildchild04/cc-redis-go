@@ -18,7 +18,7 @@ func EncodeArray(s [][]byte) []byte {
 	return res
 }
 
-func EncodeBulckString(s []byte) []byte {
+func EncodeBulkString(s []byte) []byte {
 
 	res := make([]byte, 0, len(s)+5)
 	res = append(res, '$')
@@ -36,7 +36,7 @@ func EncodeBulkStringArray(s [][]byte) []byte {
 
 	buffer := make([]byte, 0, 1024)
 	for _, i := range s {
-		buffer = append(buffer, EncodeBulckString(i)...)
+		buffer = append(buffer, EncodeBulkString(i)...)
 	}
 
 	return buffer

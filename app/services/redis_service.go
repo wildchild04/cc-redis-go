@@ -42,8 +42,8 @@ type RedisService struct {
 	kvs Kvs
 }
 
-func NewRedisService() *RedisService {
-	return &RedisService{NewKvSService()}
+func NewRedisService(kvs Kvs) *RedisService {
+	return &RedisService{kvs}
 }
 
 func (rs *RedisService) HandleConn(conn net.Conn, ctx context.Context) {
@@ -67,7 +67,11 @@ func (rs *RedisService) HandleConn(conn net.Conn, ctx context.Context) {
 		switch incoming.(type) {
 		case parser.CmdInfo:
 			cmd := incoming.(parser.CmdInfo)
-			resp := rs.getCmdResponse(&cmd, ctx)
+			resp, shouldRegister := rs.getCmdResponse(&cmd, ctx)
+			if shouldRegister {
+				registrationChan := ctx.Value(info.CTX_REPLACATION_REGISTRATION).(chan net.Conn)
+				registrationChan <- conn
+			}
 			log.Printf("response to %+v:\n%s\n", cmd, resp)
 			conn.Write(resp)
 		case parser.SimpleString:
@@ -79,17 +83,22 @@ func (rs *RedisService) HandleConn(conn net.Conn, ctx context.Context) {
 	}
 }
 
-func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Context) []byte {
+func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Context) ([]byte, bool) {
 
 	serverInfo := ctx.Value(info.CTX_SERVER_INFO).(info.ServerInfo)
 	switch cmdInfo.CmdName {
 	case PING:
-		return respencoding.EncodeSimpleString("PONG")
+		return respencoding.EncodeSimpleString("PONG"), false
 	case ECHO:
-		return respencoding.EncodeSimpleString(cmdInfo.Args[0])
+		return respencoding.EncodeSimpleString(cmdInfo.Args[0]), false
 	case SET:
+		if serverInfo[info.SERVER_ROLE] == info.ROLE_MASTER {
+			cmdEvent := ctx.Value(info.CTX_REPLICATION_EVENTS).(chan parser.CmdInfo)
+			cmdEvent <- *cmdInfo
+		}
+
 		if len(cmdInfo.Args) < 2 {
-			return respencoding.EncodeSimpleError("Not enough args for SET: " + strings.Join(cmdInfo.Args, ","))
+			return respencoding.EncodeSimpleError("Not enough args for SET: " + strings.Join(cmdInfo.Args, ",")), false
 		}
 		ok := false
 
@@ -99,34 +108,33 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 
 			ops, err := buildKvsOptions(cmdInfo.Args[2:])
 			if err != nil {
-				return respencoding.EncodeSimpleError(err.Error())
+				return respencoding.EncodeSimpleError(err.Error()), false
 			}
 			ok = rs.kvs.SetWithOptions(key, []byte(val), ops)
 		} else {
-
 			ok = rs.kvs.Set(key, []byte(val))
 		}
 		if ok {
-			return respencoding.EncodeSimpleString("OK")
+			return respencoding.EncodeSimpleString("OK"), false
 		} else {
-			return respencoding.EncodeSimpleError("ERR: could not store k/v")
+			return respencoding.EncodeSimpleError("ERR: could not store k/v"), false
 		}
 	case GET:
 		value, ok := rs.kvs.Get(cmdInfo.Args[0])
 		if ok {
-			return respencoding.EncodeBulkStringArray([][]byte{value})
+			return respencoding.EncodeBulkStringArray([][]byte{value}), false
 		} else {
-			return []byte(NULL_BULK)
+			return []byte(NULL_BULK), false
 		}
 	case INFO:
 		if len(cmdInfo.Args) < 1 {
-			return respencoding.EncodeBulckString(info.BuildInfo("", ctx))
+			return respencoding.EncodeBulkString(info.BuildInfo("", ctx)), false
 		} else {
-			return respencoding.EncodeBulckString(info.BuildInfo(cmdInfo.Args[0], ctx))
+			return respencoding.EncodeBulkString(info.BuildInfo(cmdInfo.Args[0], ctx)), false
 		}
 	case REPLCONF:
 		log.Println("Replication config received", cmdInfo)
-		return respencoding.EncodeSimpleString("OK")
+		return respencoding.EncodeSimpleString("OK"), false
 	case PSYNC:
 		log.Println("Psync received", cmdInfo)
 		resync := respencoding.EncodeSimpleString("FULLRESYNC " + serverInfo[info.SERVER_MASTER_REPLID] + " 0")
@@ -139,10 +147,10 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 		reply = append(reply, []byte(parser.CRNL)...)
 		reply = append(reply, rdbFile...)
 
-		return reply
+		return reply, true
 	}
 
-	return respencoding.EncodeSimpleString("UNKNOWN CMD")
+	return respencoding.EncodeSimpleString("UNKNOWN CMD"), false
 }
 
 func buildKvsOptions(args []string) (KvsOptions, error) {
