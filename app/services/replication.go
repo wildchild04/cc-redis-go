@@ -24,8 +24,8 @@ type replicationServiceImp struct {
 	metrics    *info.Metrics
 }
 
-func NewReplicationService(kvs Kvs) ReplicationService {
-	return &replicationServiceImp{kvnService: kvs, metrics: info.NewMetrics()}
+func NewReplicationService(kvs Kvs, metrics *info.Metrics) ReplicationService {
+	return &replicationServiceImp{kvnService: kvs, metrics: metrics}
 }
 
 func (r *replicationServiceImp) HandleMasterConn(conn net.Conn, ctx context.Context) {

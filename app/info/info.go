@@ -36,8 +36,9 @@ const (
 type ServerInfo map[string]string
 
 type Metrics struct {
-	mx         sync.Mutex
-	replOffset int64
+	mx               sync.Mutex
+	replOffset       int64
+	replicationCount int
 }
 
 func NewMetrics() *Metrics {
@@ -55,6 +56,18 @@ func (m *Metrics) GetReplOffset() int64 {
 	defer m.mx.Unlock()
 
 	return m.replOffset
+}
+
+func (m *Metrics) PlusReplicationCount() {
+	m.mx.Lock()
+	defer m.mx.Unlock()
+	m.replicationCount++
+}
+
+func (m *Metrics) GetReplicationCount() int {
+	m.mx.Lock()
+	defer m.mx.Unlock()
+	return m.replicationCount
 }
 
 func BuildInfo(variant string, ctx context.Context) []byte {

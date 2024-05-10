@@ -4,6 +4,7 @@ import (
 	"log"
 	"net"
 
+	"github.com/codecrafters-io/redis-starter-go/app/info"
 	"github.com/codecrafters-io/redis-starter-go/app/protocol/parser"
 	respencoding "github.com/codecrafters-io/redis-starter-go/app/protocol/resp_encoding"
 )
@@ -18,14 +19,16 @@ type masterServiceImpl struct {
 	replicationEventChan    chan parser.CmdInfo
 	replicaRegistrationChan chan net.Conn
 	replicaConns            []net.Conn
+	metrics                 *info.Metrics
 }
 
-func NewMasterService() MasterService {
+func NewMasterService(metrics *info.Metrics) MasterService {
 
 	return &masterServiceImpl{
 		replicationEventChan:    make(chan parser.CmdInfo),
 		replicaRegistrationChan: make(chan net.Conn),
 		replicaConns:            make([]net.Conn, 0, 2),
+		metrics:                 metrics,
 	}
 }
 
@@ -71,6 +74,7 @@ func (m *masterServiceImpl) registerReplica(conn net.Conn) {
 
 	m.replicaConns = append(m.replicaConns, conn)
 	log.Printf("Connection from %s registered", conn.RemoteAddr())
+	m.metrics.PlusReplicationCount()
 
 }
 

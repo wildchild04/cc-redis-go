@@ -158,7 +158,8 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 
 		return reply, true
 	case WAIT:
-		return respencoding.EncodeInteger(0), false
+		metrics := ctx.Value(info.CTX_METRICS).(*info.Metrics)
+		return respencoding.EncodeInteger(metrics.GetReplicationCount()), false
 	}
 
 	return respencoding.EncodeSimpleString("UNKNOWN CMD"), false

@@ -60,7 +60,7 @@ func (s *Server) Start() {
 	s.serverInfo[info.SERVER_MASTER_REPLID] = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
 
 	if s.serverInfo[info.SERVER_ROLE] == info.ROLE_SLAVE {
-		s.replicationService = services.NewReplicationService(s.kvs)
+		s.replicationService = services.NewReplicationService(s.kvs, s.metrics)
 		portString := strconv.Itoa(serverOps.masterPort)
 		s.serverInfo[info.SERVER_MASTER_HOST] = serverOps.masterHost
 		s.serverInfo[info.SERVER_MASTER_PORT] = portString
@@ -75,7 +75,7 @@ func (s *Server) Start() {
 	}
 
 	if s.serverInfo[info.SERVER_ROLE] == info.ROLE_MASTER {
-		s.masterService = services.NewMasterService()
+		s.masterService = services.NewMasterService(s.metrics)
 		go s.masterService.HandleEvents()
 	}
 
