@@ -49,6 +49,14 @@ func EncodeSimpleString(s string) []byte {
 	return byteResp
 }
 
+func EncodeInteger(i int) []byte {
+	intString := strconv.Itoa(i)
+	byteResp := make([]byte, 0, len(intString)+3)
+	byteResp = append(byteResp, ':')
+	byteResp = append(byteResp, []byte(addCRNL(intString))...)
+	return byteResp
+}
+
 func EncodeSimpleError(s string) []byte {
 
 	byteResp := make([]byte, 0, len(s)+3)

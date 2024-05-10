@@ -40,12 +40,12 @@ func Test_bulkStringToStringSlice(t *testing.T) {
 		reader := bufio.NewReader(stringReader)
 		parser := NewParser(reader)
 
-		got, err := parser.bulkStringToStringSlice(tc.size)
+		got, err, size := parser.bulkStringToStringSlice(tc.size)
 
 		if tc.expectedError {
 			assert.NotNil(t, err)
 		}
-
+		assert.Equal(t, len(tc.input), size)
 		assert.Equal(t, tc.expected, got)
 	}
 }
@@ -63,6 +63,7 @@ func Test_getCmdInfo(t *testing.T) {
 			expected: CmdInfo{
 				CmdName: "ping",
 				Args:    []string{},
+				Size:    14,
 			},
 		},
 		{
@@ -70,6 +71,7 @@ func Test_getCmdInfo(t *testing.T) {
 			expected: CmdInfo{
 				CmdName: "echo",
 				Args:    []string{"hey"},
+				Size:    23,
 			},
 		},
 		{
@@ -77,6 +79,7 @@ func Test_getCmdInfo(t *testing.T) {
 			expected: CmdInfo{
 				CmdName: "set",
 				Args:    []string{"test", "pog"},
+				Size:    32,
 			},
 		},
 		{
@@ -84,6 +87,7 @@ func Test_getCmdInfo(t *testing.T) {
 			expected: CmdInfo{
 				CmdName: "get",
 				Args:    []string{"test"},
+				Size:    21,
 			},
 		},
 	}
