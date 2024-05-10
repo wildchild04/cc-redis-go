@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strconv"
 	"strings"
 
 	"github.com/codecrafters-io/redis-starter-go/app/info"
@@ -20,10 +21,11 @@ type ReplicationService interface {
 
 type replicationServiceImp struct {
 	kvnService Kvs
+	metrics    *info.Metrics
 }
 
 func NewReplicationService(kvs Kvs) ReplicationService {
-	return &replicationServiceImp{kvnService: kvs}
+	return &replicationServiceImp{kvnService: kvs, metrics: info.NewMetrics()}
 }
 
 func (r *replicationServiceImp) HandleMasterConn(conn net.Conn, ctx context.Context) {
@@ -77,17 +79,21 @@ func (r *replicationServiceImp) handleMasterCmd(cmd parser.CmdInfo, conn net.Con
 	switch cmd.CmdName {
 	case SET:
 		r.kvnService.Set(cmd.Args[0], []byte(cmd.Args[1]))
+		r.metrics.AddToOffset(int64(cmd.Size))
 	case REPLCONF:
 		if cmd.Args[0] == "GETACK" {
-
+			ackOffset := strconv.FormatInt(r.metrics.GetReplOffset(), 10)
+			log.Println(r.metrics)
 			ack := [][]byte{
 				[]byte("REPLCONF"),
 				[]byte("ACK"),
-				{'0'},
+				[]byte(ackOffset),
 			}
-
 			conn.Write(respencoding.EncodeArray(ack))
+			r.metrics.AddToOffset(int64(cmd.Size))
 		}
+	case PING:
+		r.metrics.AddToOffset(int64(cmd.Size))
 
 	default:
 		log.Println("could not handle unkwon cmd", cmd)

@@ -40,6 +40,7 @@ type RespResponse interface {
 type CmdInfo struct {
 	CmdName string
 	Args    []string
+	Size    int
 }
 
 func (cmdInfo CmdInfo) respResponseType() {}
@@ -124,7 +125,9 @@ func (p *Parser) ParseIncomingData() (RespResponse, error) {
 	switch DataType(dataType) {
 
 	case RESP_ARRAY:
+		size := 1
 		arraySizeByte, err := p.input.ReadString(LN)
+		size += len(arraySizeByte)
 		arraySizeByte = strings.TrimRight(arraySizeByte, CRNL)
 
 		if err != nil {
@@ -138,7 +141,8 @@ func (p *Parser) ParseIncomingData() (RespResponse, error) {
 
 		}
 
-		lines, err := p.bulkStringToStringSlice(arraySize)
+		lines, err, bulkTotal := p.bulkStringToStringSlice(arraySize)
+		size += bulkTotal
 
 		if err != nil {
 			return CmdInfo{}, fmt.Errorf("Could not get cmd lines: %s", err)
@@ -150,7 +154,7 @@ func (p *Parser) ParseIncomingData() (RespResponse, error) {
 		if err != nil {
 			return CmdInfo{}, fmt.Errorf("cmd name error: %s", err)
 		}
-		return CmdInfo{CmdName: cmdName, Args: lines[1:]}, nil
+		return CmdInfo{CmdName: cmdName, Args: lines[1:], Size: size}, nil
 	case RESP_SIMPLE_STRING:
 		data, err := p.input.ReadString(LN)
 
@@ -189,21 +193,23 @@ func (p *Parser) ParseIncomingData() (RespResponse, error) {
 	}
 }
 
-func (p *Parser) bulkStringToStringSlice(size int) ([]string, error) {
+func (p *Parser) bulkStringToStringSlice(size int) ([]string, error, int) {
 	res := make([]string, 0, size)
+	total := 0
 	for range size {
 		peekOne, err := p.input.Peek(1)
 
 		if err != nil {
-			return nil, fmt.Errorf("Could not peek: %s", err)
+			return nil, fmt.Errorf("Could not peek: %s", err), 0
 		}
 
 		if isBulkStringDataType(peekOne[0]) {
 
 			lineByte, err := p.input.ReadString(LN)
+			total += len(lineByte)
 
 			if err != nil {
-				return nil, fmt.Errorf("Could read bulk string first line: %s", err)
+				return nil, fmt.Errorf("Could read bulk string first line: %s", err), 0
 			}
 
 			lineByte = strings.TrimRight(lineByte, CRNL)
@@ -211,20 +217,21 @@ func (p *Parser) bulkStringToStringSlice(size int) ([]string, error) {
 			dataSize, err := strconv.Atoi(lineByte)
 
 			if err != nil {
-				return nil, fmt.Errorf("data size atoi err: %s", err)
+				return nil, fmt.Errorf("data size atoi err: %s", err), 0
 			}
 
 			dataString, err := p.input.ReadString(LN)
+			total += len(dataString)
 			dataString = strings.TrimRight(dataString, CRNL)
 
 			if !(len(dataString) == dataSize) {
-				return nil, fmt.Errorf("data size does not match data, size:%d data:%s", dataSize, dataString)
+				return nil, fmt.Errorf("data size does not match data, size:%d data:%s", dataSize, dataString), 0
 			}
 
 			res = append(res, dataString)
 		}
 	}
-	return res, nil
+	return res, nil, total
 }
 
 func asciiByteToInt(b byte) (int, error) {
