@@ -2,8 +2,10 @@ package parser
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"strconv"
 	"strings"
 )
@@ -49,11 +51,23 @@ type UnknownData struct {
 
 func (uk UnknownData) respResponseType() {}
 
+type RDBFile struct {
+	Data []byte
+}
+
+func (rbd RDBFile) respResponseType() {}
+
 type SimpleString struct {
 	Data string
 }
 
 func (ss SimpleString) respResponseType() {}
+
+type BulkString struct {
+	Data string
+}
+
+func (bs BulkString) respResponseType() {}
 
 func NewParser(reader *bufio.Reader) *Parser {
 	return &Parser{input: reader}
@@ -96,9 +110,9 @@ func (p *Parser) GetSimpleStringResponse() (*SimpleString, error) {
 }
 
 func (p *Parser) ParseIncomingData() (RespResponse, error) {
-
 	dataType, err := p.input.ReadByte()
 
+	log.Println("dataType", string([]byte{dataType}))
 	if err != nil {
 
 		if err == io.EOF {
@@ -145,6 +159,28 @@ func (p *Parser) ParseIncomingData() (RespResponse, error) {
 		}
 
 		return SimpleString{data}, nil
+	case RESP_BULK_STRING:
+		sizeString, err := p.input.ReadString(LN)
+
+		if err != nil {
+			return SimpleString{}, fmt.Errorf("error parsing rbd string: %s", err)
+		}
+		size, err := strconv.Atoi(strings.Trim(sizeString, CRNL))
+		log.Println("size", size)
+		if err != nil {
+			return SimpleString{}, fmt.Errorf("error parsing rbd string: %s", err)
+		}
+
+		data := make([]byte, size)
+		p.input.Read(data)
+		log.Println("ffff", string(data))
+		if string(data[len(data)-2:]) == CRNL {
+
+			return BulkString{Data: string(bytes.Trim(data, CRNL))}, nil
+		} else {
+			return RDBFile{Data: data}, nil
+		}
+
 	default:
 		unknowData := make([]byte, p.input.Buffered())
 		p.input.Read(unknowData)

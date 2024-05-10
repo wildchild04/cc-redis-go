@@ -8,8 +8,6 @@ import (
 	"strconv"
 
 	"github.com/codecrafters-io/redis-starter-go/app/info"
-	"github.com/codecrafters-io/redis-starter-go/app/protocol/parser"
-	"github.com/codecrafters-io/redis-starter-go/app/replication"
 	"github.com/codecrafters-io/redis-starter-go/app/services"
 	"github.com/google/uuid"
 )
@@ -26,12 +24,14 @@ const (
 )
 
 type Server struct {
-	QChan      chan any
-	connChan   chan net.Conn
-	serverInfo info.ServerInfo
-	rs         *services.RedisService
-	ss         replication.SlaveService
-	metrics    *info.Metrics
+	QChan              chan any
+	connChan           chan net.Conn
+	serverInfo         info.ServerInfo
+	kvs                services.Kvs
+	rs                 *services.RedisService
+	masterService      services.MasterService
+	replicationService services.ReplicationService
+	metrics            *info.Metrics
 }
 
 type serverOptions struct {
@@ -44,11 +44,11 @@ type serverOptions struct {
 func NewServer() *Server {
 	kvs := services.NewKvSService()
 	return &Server{
+		kvs:        kvs,
 		connChan:   make(chan net.Conn),
 		rs:         services.NewRedisService(kvs),
 		serverInfo: make(info.ServerInfo),
 		metrics:    info.NewMetrics(),
-		ss:         replication.NewSlaveService(make(chan parser.CmdInfo), kvs),
 	}
 }
 
@@ -60,6 +60,7 @@ func (s *Server) Start() {
 	s.serverInfo[info.SERVER_MASTER_REPLID] = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
 
 	if s.serverInfo[info.SERVER_ROLE] == info.ROLE_SLAVE {
+		s.replicationService = services.NewReplicationService(s.kvs)
 		portString := strconv.Itoa(serverOps.masterPort)
 		s.serverInfo[info.SERVER_MASTER_HOST] = serverOps.masterHost
 		s.serverInfo[info.SERVER_MASTER_PORT] = portString
@@ -70,11 +71,12 @@ func (s *Server) Start() {
 			log.Fatal("could not connect to master, info:\n", s.serverInfo)
 		}
 
-		go s.ss.HandleSlaveConn(masterConn, s.buildCtx())
+		go s.replicationService.HandleMasterConn(masterConn, s.buildCtx())
 	}
 
 	if s.serverInfo[info.SERVER_ROLE] == info.ROLE_MASTER {
-		go s.ss.HandleWriteCmd()
+		s.masterService = services.NewMasterService()
+		go s.masterService.HandleEvents()
 	}
 
 	log.Println("Starting server\n INFO", s.serverInfo)
@@ -135,8 +137,8 @@ func (s *Server) buildCtx() context.Context {
 	ctx = context.WithValue(ctx, info.CTX_SERVER_INFO, s.serverInfo)
 	ctx = context.WithValue(ctx, info.CTX_METRICS, s.metrics)
 	if s.serverInfo[info.SERVER_ROLE] == info.ROLE_MASTER {
-		ctx = context.WithValue(ctx, info.CTX_REPLICATION_EVENTS, s.ss.GetEventChan())
-		ctx = context.WithValue(ctx, info.CTX_REPLACATION_REGISTRATION, s.ss.GetReplicaRegistrationChan())
+		ctx = context.WithValue(ctx, info.CTX_REPLICATION_EVENTS, s.masterService.GetReplicationCmdChan())
+		ctx = context.WithValue(ctx, info.CTX_REPLACATION_REGISTRATION, s.masterService.GetReplicaRegistrationChan())
 	}
 
 	return ctx

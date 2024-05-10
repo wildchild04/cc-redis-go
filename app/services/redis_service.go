@@ -68,12 +68,12 @@ func (rs *RedisService) HandleConn(conn net.Conn, ctx context.Context) {
 		case parser.CmdInfo:
 			cmd := incoming.(parser.CmdInfo)
 			resp, shouldRegister := rs.getCmdResponse(&cmd, ctx)
+			log.Printf("response to %+v:\n%s\n", cmd, resp)
+			conn.Write(resp)
 			if shouldRegister {
 				registrationChan := ctx.Value(info.CTX_REPLACATION_REGISTRATION).(chan net.Conn)
 				registrationChan <- conn
 			}
-			log.Printf("response to %+v:\n%s\n", cmd, resp)
-			conn.Write(resp)
 		case parser.SimpleString:
 			log.Println("got simple string\n", incoming)
 		case parser.UnknownData:
@@ -133,6 +133,14 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 			return respencoding.EncodeBulkString(info.BuildInfo(cmdInfo.Args[0], ctx)), false
 		}
 	case REPLCONF:
+		if cmdInfo.Args[0] == "getack" {
+			ackRply := [][]byte{
+				[]byte(REPLCONF),
+				[]byte("ack"),
+				{'0'},
+			}
+			return respencoding.EncodeArray(ackRply), false
+		}
 		log.Println("Replication config received", cmdInfo)
 		return respencoding.EncodeSimpleString("OK"), false
 	case PSYNC:
