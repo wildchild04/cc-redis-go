@@ -113,10 +113,10 @@ func (p *Parser) GetSimpleStringResponse() (*SimpleString, error) {
 func (p *Parser) ParseIncomingData() (RespResponse, error) {
 	dataType, err := p.input.ReadByte()
 
-	log.Println("dataType", string([]byte{dataType}))
 	if err != nil {
 
 		if err == io.EOF {
+			log.Println("done parsing")
 			return CmdInfo{}, err
 		}
 		return CmdInfo{}, fmt.Errorf("Error reading data type %s", err)
@@ -177,7 +177,6 @@ func (p *Parser) ParseIncomingData() (RespResponse, error) {
 
 		data := make([]byte, size)
 		p.input.Read(data)
-		log.Println("ffff", string(data))
 		if string(data[len(data)-2:]) == CRNL {
 
 			return BulkString{Data: string(bytes.Trim(data, CRNL))}, nil

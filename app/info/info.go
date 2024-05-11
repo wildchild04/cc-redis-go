@@ -17,6 +17,7 @@ const (
 	CTX_METRICS                  = "metrics"
 	CTX_REPLICATION_EVENTS       = "replication-events"
 	CTX_REPLACATION_REGISTRATION = "replication-registration"
+	CTX_ACK_EVENT                = "ack-event"
 
 	// Server inf
 	SERVER_ROLE               = "role"
@@ -37,7 +38,8 @@ type ServerInfo map[string]string
 
 type Metrics struct {
 	mx               sync.Mutex
-	replOffset       int64
+	prevOffset       int64
+	currentOffset    int64
 	replicationCount int
 }
 
@@ -48,14 +50,21 @@ func NewMetrics() *Metrics {
 func (m *Metrics) AddToOffset(add int64) {
 	m.mx.Lock()
 	defer m.mx.Unlock()
-	m.replOffset += add
+	m.prevOffset = m.currentOffset
+	m.currentOffset += add
 }
 
 func (m *Metrics) GetReplOffset() int64 {
 	m.mx.Lock()
 	defer m.mx.Unlock()
 
-	return m.replOffset
+	return m.prevOffset
+}
+
+func (m *Metrics) ResetReplicationCount() {
+	m.mx.Lock()
+	defer m.mx.Unlock()
+	m.replicationCount = 0
 }
 
 func (m *Metrics) PlusReplicationCount() {

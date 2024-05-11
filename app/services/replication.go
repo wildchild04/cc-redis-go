@@ -82,21 +82,23 @@ func (r *replicationServiceImp) handleMasterCmd(cmd parser.CmdInfo, conn net.Con
 		r.metrics.AddToOffset(int64(cmd.Size))
 	case REPLCONF:
 		if cmd.Args[0] == "GETACK" {
+			r.metrics.AddToOffset(int64(cmd.Size))
 			ackOffset := strconv.FormatInt(r.metrics.GetReplOffset(), 10)
-			log.Println(r.metrics)
 			ack := [][]byte{
 				[]byte("REPLCONF"),
 				[]byte("ACK"),
 				[]byte(ackOffset),
 			}
-			conn.Write(respencoding.EncodeArray(ack))
-			r.metrics.AddToOffset(int64(cmd.Size))
+			rep := respencoding.EncodeArray(ack)
+			log.Println("ack reply", string(rep))
+			log.Println("metrics:", r.metrics)
+			conn.Write(rep)
 		}
 	case PING:
 		r.metrics.AddToOffset(int64(cmd.Size))
 
 	default:
-		log.Println("could not handle unkwon cmd", cmd)
+		log.Println("could not handle cmd", cmd)
 	}
 
 }

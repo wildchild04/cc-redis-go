@@ -75,7 +75,7 @@ func (s *Server) Start() {
 	}
 
 	if s.serverInfo[info.SERVER_ROLE] == info.ROLE_MASTER {
-		s.masterService = services.NewMasterService(s.metrics)
+		s.masterService = services.NewMasterService(s.metrics, s.connChan)
 		go s.masterService.HandleEvents()
 	}
 
@@ -139,6 +139,8 @@ func (s *Server) buildCtx() context.Context {
 	if s.serverInfo[info.SERVER_ROLE] == info.ROLE_MASTER {
 		ctx = context.WithValue(ctx, info.CTX_REPLICATION_EVENTS, s.masterService.GetReplicationCmdChan())
 		ctx = context.WithValue(ctx, info.CTX_REPLACATION_REGISTRATION, s.masterService.GetReplicaRegistrationChan())
+		ctx = context.WithValue(ctx, info.CTX_ACK_EVENT, s.masterService.GetAckEventChan())
+		log.Println("Master ctx set", s.masterService.GetAckEventChan())
 	}
 
 	return ctx

@@ -49,31 +49,53 @@ func NewRedisService(kvs Kvs) *RedisService {
 
 func (rs *RedisService) HandleConn(conn net.Conn, ctx context.Context) {
 
-	defer log.Println("clossing conn:", conn.RemoteAddr())
-	defer conn.Close()
+	shouldclose := true
+OuterLoop:
 	for {
 		reader := bufio.NewReader(conn)
-		reader.Peek(2)
 		p := parser.NewParser(reader)
 
 		incoming, err := p.ParseIncomingData()
 		if err != nil {
 			if err == io.EOF {
-				return
+				log.Println("done with client", conn.RemoteAddr())
+				break
 			}
 			log.Println("Error getting cmd: ", err)
-			return
+			break
 		}
 
 		switch incoming.(type) {
 		case parser.CmdInfo:
 			cmd := incoming.(parser.CmdInfo)
-			resp, shouldRegister := rs.getCmdResponse(&cmd, ctx)
-			log.Printf("response to %+v:\n%s\n", cmd, resp)
-			conn.Write(resp)
-			if shouldRegister {
-				registrationChan := ctx.Value(info.CTX_REPLACATION_REGISTRATION).(chan net.Conn)
-				registrationChan <- conn
+			if cmd.CmdName == WAIT {
+
+				minReplicationReplies, _ := strconv.Atoi(cmd.Args[0])
+				waitTime, _ := strconv.Atoi(cmd.Args[1])
+
+				ackEventChan := ctx.Value(info.CTX_ACK_EVENT).(chan NotifyReplicationAck)
+				log.Println("sending ack to replication", ackEventChan)
+				ackEventChan <- NotifyReplicationAck{
+					timeout:         waitTime,
+					minimumNotifs:   minReplicationReplies,
+					redisClientConn: conn,
+				}
+				shouldclose = false
+				break OuterLoop
+			} else {
+
+				resp, shouldRegister := rs.getCmdResponse(&cmd, ctx)
+				log.Printf("response to %+v:\n%s\n", cmd, resp)
+				if resp != nil {
+					conn.Write(resp)
+				}
+				if shouldRegister {
+					registrationChan := ctx.Value(info.CTX_REPLACATION_REGISTRATION).(chan net.Conn)
+					registrationChan <- conn
+					shouldclose = false
+					log.Println("register replica", conn.RemoteAddr())
+					break OuterLoop
+				}
 			}
 		case parser.SimpleString:
 			log.Println("got simple string\n", incoming)
@@ -82,6 +104,14 @@ func (rs *RedisService) HandleConn(conn net.Conn, ctx context.Context) {
 				incoming.(parser.UnknownData).Dt, string(incoming.(parser.UnknownData).Data))
 		}
 	}
+
+	if shouldclose {
+		log.Println("clossing ", conn.RemoteAddr())
+		conn.Close()
+	} else {
+		log.Println("releaseing replication conn", conn.RemoteAddr())
+	}
+
 }
 
 func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Context) ([]byte, bool) {
@@ -116,6 +146,7 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 			ok = rs.kvs.Set(key, []byte(val))
 		}
 		if ok {
+
 			return respencoding.EncodeSimpleString("OK"), false
 		} else {
 			return respencoding.EncodeSimpleError("ERR: could not store k/v"), false
@@ -142,6 +173,7 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 			}
 			return respencoding.EncodeArray(ackRply), false
 		}
+
 		log.Println("Replication config received", cmdInfo)
 		return respencoding.EncodeSimpleString("OK"), false
 	case PSYNC:
@@ -158,8 +190,8 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 
 		return reply, true
 	case WAIT:
-		metrics := ctx.Value(info.CTX_METRICS).(*info.Metrics)
-		return respencoding.EncodeInteger(metrics.GetReplicationCount()), false
+
+		return nil, false
 	}
 
 	return respencoding.EncodeSimpleString("UNKNOWN CMD"), false
