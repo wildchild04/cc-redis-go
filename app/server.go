@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/codecrafters-io/redis-starter-go/app/info"
 	"github.com/codecrafters-io/redis-starter-go/app/services"
@@ -19,8 +20,10 @@ func main() {
 
 const (
 	// Server options
-	PORT       = "--port"
-	REPLICA_OF = "--replicaof"
+	PORT        = "--port"
+	REPLICA_OF  = "--replicaof"
+	DIR         = "--dir"
+	DB_FILENAME = "--dbfilename"
 )
 
 type Server struct {
@@ -35,10 +38,12 @@ type Server struct {
 }
 
 type serverOptions struct {
-	port       int
-	role       string
-	masterHost string
-	masterPort int
+	port        int
+	role        string
+	masterHost  string
+	masterPort  int
+	rbdDir      string
+	rbdFileName string
 }
 
 func NewServer() *Server {
@@ -58,6 +63,13 @@ func (s *Server) Start() {
 	s.serverInfo[info.SERVER_ROLE] = serverOps.role
 	s.serverInfo[info.SERVER_PORT] = strconv.Itoa(serverOps.port)
 	s.serverInfo[info.SERVER_MASTER_REPLID] = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+	if serverOps.rbdDir != "" {
+		s.serverInfo[info.SERVER_RDB_DIR] = serverOps.rbdDir
+	}
+
+	if serverOps.rbdFileName != "" {
+		s.serverInfo[info.SERVER_RDB_FILE_NAME] = serverOps.rbdFileName
+	}
 
 	if s.serverInfo[info.SERVER_ROLE] == info.ROLE_SLAVE {
 		s.replicationService = services.NewReplicationService(s.kvs, s.metrics)
@@ -181,14 +193,20 @@ func buildServerOptions() serverOptions {
 
 			ops.port = port
 		case REPLICA_OF:
-
-			if processedArgs+2 >= len(args) {
+			var replicaOfArgs []string
+			if processedArgs+1 <= len(args) {
+				replicaOfArgs = strings.Split(args[processedArgs+1], " ")
+			}
+			if processedArgs+2 >= len(args) && len(replicaOfArgs) <= 1 {
 				log.Fatal("missing replica of arguments")
 			}
 			processedArgs++
-			masterHost := args[processedArgs]
+			if len(replicaOfArgs) == 1 {
+				replicaOfArgs = append(replicaOfArgs, args[processedArgs+1])
+			}
 			processedArgs++
-			masterPort, err := strconv.Atoi(args[processedArgs])
+			masterHost := replicaOfArgs[0]
+			masterPort, err := strconv.Atoi(replicaOfArgs[1])
 			if err != nil {
 				log.Fatal("Could not get master port value:" + err.Error())
 			}
@@ -196,6 +214,28 @@ func buildServerOptions() serverOptions {
 			ops.masterHost = masterHost
 			ops.masterPort = masterPort
 			ops.role = info.ROLE_SLAVE
+		case DIR:
+			if processedArgs+1 >= len(args) {
+				log.Fatal("missing dir argument")
+			}
+			processedArgs++
+			dir := args[processedArgs]
+			if dir == "" {
+				log.Fatal("dir is empty")
+			}
+			ops.rbdDir = dir
+
+		case DB_FILENAME:
+
+			if processedArgs+1 >= len(args) {
+				log.Fatal("missing dir name argument")
+			}
+			processedArgs++
+			dirName := args[processedArgs]
+			if dirName == "" {
+				log.Fatal("dir name is empty")
+			}
+			ops.rbdFileName = dirName
 
 		default:
 			processedArgs++

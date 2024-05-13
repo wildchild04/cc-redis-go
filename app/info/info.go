@@ -26,6 +26,8 @@ const (
 	SERVER_MASTER_PORT        = "master_port"
 	SERVER_MASTER_REPLID      = "master_replid"
 	SERVER_MASTER_REPL_OFFSET = "master_repl_offset"
+	SERVER_RDB_DIR            = "dir"
+	SERVER_RDB_FILE_NAME      = "dbfilename"
 
 	// role types
 	ROLE_MASTER = "master"

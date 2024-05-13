@@ -27,6 +27,7 @@ const (
 	REPLCONF = "replconf"
 	PSYNC    = "psync"
 	WAIT     = "wait"
+	CONFIG   = "config"
 
 	//RESP3 reply
 	NULLS     = "_\r\n"
@@ -190,8 +191,20 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 
 		return reply, true
 	case WAIT:
-
 		return nil, false
+	case CONFIG:
+
+		if cmdInfo.Args[0] == "GET" {
+			val := serverInfo[cmdInfo.Args[1]]
+			if val != "" {
+				resp := [][]byte{
+					[]byte(cmdInfo.Args[1]),
+					[]byte(val),
+				}
+				return respencoding.EncodeArray(resp), false
+			}
+		}
+		return []byte(NULLS), false
 	}
 
 	return respencoding.EncodeSimpleString("UNKNOWN CMD"), false
