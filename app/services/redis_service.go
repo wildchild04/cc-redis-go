@@ -29,6 +29,7 @@ const (
 	WAIT     = "wait"
 	CONFIG   = "config"
 	KEYS     = "keys"
+	TYPE     = "type"
 
 	//RESP3 reply
 	NULLS     = "_\r\n"
@@ -212,6 +213,12 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 			kvsKeys := rs.kvs.Keys()
 			return respencoding.EncodeArray(kvsKeys), false
 		}
+	case TYPE:
+		key := cmdInfo.Args[0]
+
+		valueType := rs.kvs.GetType(key)
+
+		return respencoding.EncodeSimpleString(valueType), false
 	}
 
 	return respencoding.EncodeSimpleString("UNKNOWN CMD"), false

@@ -11,6 +11,7 @@ type Kvs interface {
 	Set(k string, v []byte) bool
 	SetWithOptions(k string, v []byte, ops KvsOptions) bool
 	Get(k string) ([]byte, bool)
+	GetType(k string) string
 	Keys() [][]byte
 }
 
@@ -20,10 +21,12 @@ type KvsOptions struct {
 }
 
 type KvsObject struct {
-	data    []byte
-	created *time.Time
-	expires *time.Time
+	data      []byte
+	created   *time.Time
+	expires   *time.Time
+	valueType string
 }
+
 type kvSService struct {
 	size  int64
 	store *sync.Map
@@ -33,12 +36,25 @@ func NewKvSService() Kvs {
 	return &kvSService{store: &sync.Map{}}
 }
 
+func (kvs *kvSService) GetType(k string) string {
+	res, ok := kvs.store.Load(k)
+	if !ok {
+		return "none"
+	}
+	obj, ok := res.(KvsObject)
+	if !ok {
+		return "none"
+	}
+	return obj.valueType
+}
+
 func (kvs *kvSService) Set(key string, value []byte) bool {
 
 	now := time.Now()
 	object := KvsObject{
-		data:    value,
-		created: &now,
+		data:      value,
+		created:   &now,
+		valueType: "string",
 	}
 	kvs.size++
 	kvs.store.Store(key, object)
