@@ -15,7 +15,8 @@ type Kvs interface {
 }
 
 type KvsOptions struct {
-	expires time.Duration
+	expires   time.Duration
+	timestamp uint64
 }
 
 type KvsObject struct {
@@ -53,6 +54,18 @@ func (kvs *kvSService) SetWithOptions(key string, value []byte, options KvsOptio
 	if options.expires != 0 {
 		kvs.stampObject(&obj, options.expires)
 	}
+
+	if options.timestamp != 0 {
+
+		t := convertTimestampToTime(int64(options.timestamp))
+		if t.Before(time.Now()) {
+			return false
+		}
+		created := time.Now()
+		obj.created = &created
+		obj.expires = &t
+
+	}
 	kvs.size++
 	kvs.store.Store(key, obj)
 	return true
@@ -82,6 +95,10 @@ func (kvs *kvSService) Keys() [][]byte {
 	return res
 }
 
+func NewKvsOptionsWithTimestamp(timestamp uint64) KvsOptions {
+	return KvsOptions{timestamp: timestamp}
+}
+
 func (kvs *kvSService) stampObject(ko *KvsObject, ex time.Duration) {
 	created := time.Now()
 	expires := created.Add(ex * time.Millisecond)
@@ -89,4 +106,19 @@ func (kvs *kvSService) stampObject(ko *KvsObject, ex time.Duration) {
 	ko.created = &created
 	ko.expires = &expires
 
+}
+
+func convertTimestampToTime(timestamp int64) time.Time {
+	var t time.Time
+	if timestamp > 1e16 {
+		seconds := timestamp / 1e9
+		nanoseconds := timestamp % 1e9
+		t = time.Unix(seconds, nanoseconds)
+	} else {
+		// Assuming timestamp is in microseconds
+		seconds := timestamp / 1e6
+		nanoseconds := (timestamp % 1e6) * 1e3
+		t = time.Unix(seconds, nanoseconds)
+	}
+	return t
 }

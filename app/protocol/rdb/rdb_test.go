@@ -28,6 +28,7 @@ func Test_LoadRDBFile(t *testing.T) {
 						Value: "raspberry",
 					},
 				},
+				ExpKv: []RDBExpirationPair{},
 			},
 		}, {
 			input: []byte{
@@ -45,6 +46,23 @@ func Test_LoadRDBFile(t *testing.T) {
 					{Key: "banana", Value: "banana"},
 					{Key: "apple", Value: "strawberry"},
 				},
+				ExpKv: []RDBExpirationPair{},
+			},
+		}, {
+			input: []byte{
+				82, 69, 68, 73, 83, 48, 48, 48, 51, 250, 9, 114, 101, 100, 105, 115, 45, 118, 101, 114,
+				5, 55, 46, 50, 46, 48, 250, 10, 114, 101, 100, 105, 115, 45, 98, 105, 116, 115, 192, 64,
+				254, 0, 251, 3, 3, 252, 0, 156, 239, 18, 126, 1, 0, 0, 0, 4, 112, 101, 97, 114, 5, 103,
+				114, 97, 112, 101, 252, 0, 12, 40, 138, 199, 1, 0, 0, 0, 9, 112, 105, 110, 101, 97, 112,
+				112, 108, 101, 5, 109, 97, 110, 103, 111, 252, 0, 12, 40, 138, 199, 1, 0, 0, 0, 5, 109,
+				97, 110, 103, 111, 4, 112, 101, 97, 114, 255, 31, 235, 107, 18, 213, 4, 42, 184, 10,
+			},
+			expect: RDBFile{
+				Kv: []RDBSimplePair{},
+				ExpKv: []RDBExpirationPair{
+					{Exp: 0x9cef127e010000, RDBSimplePair: RDBSimplePair{Key: "pear", Value: "grape"}},
+					{Exp: 0xc288ac7010000, RDBSimplePair: RDBSimplePair{Key: "pineapple", Value: "mango"}},
+					{Exp: 0xc288ac7010000, RDBSimplePair: RDBSimplePair{Key: "mango", Value: "pear"}}},
 			},
 		},
 	}

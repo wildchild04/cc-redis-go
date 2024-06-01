@@ -2,6 +2,7 @@ package rdb
 
 import (
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
@@ -30,7 +31,8 @@ const (
 )
 
 type RDBFile struct {
-	Kv []RDBSimplePair
+	Kv    []RDBSimplePair
+	ExpKv []RDBExpirationPair
 }
 
 type RDBSimplePair struct {
@@ -38,8 +40,13 @@ type RDBSimplePair struct {
 	Value string
 }
 
+type RDBExpirationPair struct {
+	Exp uint64
+	RDBSimplePair
+}
+
 func LoadRDBFile(file []byte) (*RDBFile, error) {
-	res := &RDBFile{Kv: make([]RDBSimplePair, 0, 1)}
+	res := &RDBFile{Kv: make([]RDBSimplePair, 0, 1), ExpKv: make([]RDBExpirationPair, 0, 1)}
 
 	currentMagicNumber := string(file[:len(MAGIC_NUMBER):len(MAGIC_NUMBER)])
 	bytesRead := len(MAGIC_NUMBER)
@@ -83,20 +90,50 @@ func LoadRDBFile(file []byte) (*RDBFile, error) {
 			// expHashSize := decodeInteger(file, bytesRead+1, getIntergerSize(file[bytesRead]))
 
 			bytesRead += numSize
-			bytesRead++
+			if file[bytesRead] == 0 {
+				bytesRead++
+			}
+
 		}
 
-		key := decodeString(file, bytesRead)
-		bytesRead += len(key) + 1
-		val := decodeString(file, bytesRead)
-		bytesRead += len(val) + 1
+		switch file[bytesRead] {
+		case EXPIRE_PAIR_4_BYTE:
+		case EXPIRE_PAIR_8_BYTE:
+			bytesRead++
+			exp := decodeLong(file, bytesRead)
+			bytesRead += 9
+			key, val, read := readPair(file, bytesRead)
+			bytesRead = read
+			res.ExpKv = append(
+				res.ExpKv,
+				RDBExpirationPair{
+					Exp:           exp,
+					RDBSimplePair: RDBSimplePair{Key: key, Value: val},
+				},
+			)
+
+		default:
+			key := decodeString(file, bytesRead)
+			bytesRead += len(key) + 1
+			val := decodeString(file, bytesRead)
+			bytesRead += len(val) + 1
+			res.Kv = append(res.Kv, RDBSimplePair{Key: key, Value: val})
+		}
 		if file[bytesRead] == 0 {
 			bytesRead++
 		}
-		res.Kv = append(res.Kv, RDBSimplePair{Key: key, Value: val})
 	}
 
 	return res, nil
+}
+
+func readPair(file []byte, bytesRead int) (string, string, int) {
+
+	key := decodeString(file, bytesRead)
+	bytesRead += len(key) + 1
+	val := decodeString(file, bytesRead)
+	bytesRead += len(val) + 1
+	return key, val, bytesRead
 }
 
 func readAuxiliarData(data []byte) (map[string]string, int) {
@@ -192,7 +229,13 @@ func decodeInteger(data []byte, index, size int) string {
 	default:
 		return ""
 	}
+}
 
+func decodeLong(data []byte, index int) uint64 {
+
+	longbytes := data[index : index+8]
+	long := binary.BigEndian.Uint64(longbytes)
+	return long
 }
 
 func decodeString(data []byte, index int) string {

@@ -85,6 +85,11 @@ func (s *Server) Start() {
 			for _, simplePair := range rdbFile.Kv {
 				s.kvs.Set(simplePair.Key, []byte(simplePair.Value))
 			}
+
+			for _, expPair := range rdbFile.ExpKv {
+
+				s.kvs.SetWithOptions(expPair.Key, []byte(expPair.Value), services.NewKvsOptionsWithTimestamp(expPair.Exp))
+			}
 		}
 
 	}
