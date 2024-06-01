@@ -17,6 +17,7 @@ const (
 	DB_SELECTOR          = 0xFE
 	EXPIRE_PAIR_4_BYTE   = 0xFD
 	EXPIRE_PAIR_8_BYTE   = 0xFC
+	RDB_END              = 0xFF
 	REDIS_VERSION        = "redis-ver"
 	REDIS_BITS           = "redis-bits"
 	CREATE_TIME          = "ctime"
@@ -67,56 +68,48 @@ func LoadRDBFile(file []byte) (*RDBFile, error) {
 		bytesRead++
 	}
 
-	resizeDb := file[bytesRead]
+	for {
+		if file[bytesRead] == RDB_END {
+			break
+		}
+		resizeDb := file[bytesRead]
 
-	if resizeDb == RESIZE_DB {
-		bytesRead++
-		numSize := getIntergerSize(file[bytesRead])
-		// hashSize := decodeInteger(file, bytesRead, numSize)
-		bytesRead += numSize
-		numSize = getIntergerSize(file[bytesRead])
-		// expHashSize := decodeInteger(file, bytesRead+1, getIntergerSize(file[bytesRead]))
+		if resizeDb == RESIZE_DB {
+			bytesRead++
+			numSize := getIntergerSize(file[bytesRead])
+			// hashSize := decodeInteger(file, bytesRead, numSize)
+			bytesRead += numSize
+			numSize = getIntergerSize(file[bytesRead])
+			// expHashSize := decodeInteger(file, bytesRead+1, getIntergerSize(file[bytesRead]))
 
-		bytesRead += numSize
-		bytesRead++
+			bytesRead += numSize
+			bytesRead++
+		}
+
+		key := decodeString(file, bytesRead)
+		bytesRead += len(key) + 1
+		val := decodeString(file, bytesRead)
+		bytesRead += len(val) + 1
+		if file[bytesRead] == 0 {
+			bytesRead++
+		}
+		res.Kv = append(res.Kv, RDBSimplePair{Key: key, Value: val})
 	}
-
-	key := decodeString(file, bytesRead)
-	bytesRead += len(key) + 1
-	val := decodeString(file, bytesRead)
-
-	res.Kv = append(res.Kv, RDBSimplePair{Key: key, Value: val})
 
 	return res, nil
 }
 
 func readAuxiliarData(data []byte) (map[string]string, int) {
 	bytesRead := 0
-	max_tries := 3
 
 	result := make(map[string]string)
-	trie := 0
 	for {
-
-		prevRead := bytesRead
-		if bytesRead == prevRead {
-
-			if max_tries < trie {
-
-				panic("max tries")
-			}
-
-			trie++
-
-		}
-
 		if data[bytesRead] > 0xFB {
 			break
 		}
 		if data[bytesRead] == AUXILIAR_FILE_HEADER {
 			bytesRead++
 		}
-
 		dataKey := decodeString(data, bytesRead)
 		bytesRead += len(dataKey) + 1
 		switch dataKey {
@@ -201,13 +194,6 @@ func decodeInteger(data []byte, index, size int) string {
 	}
 
 }
-
-// func getStringLength(data []byte, index int) {
-// 	firtByte := data[index]
-
-// 	msbs := size >> 6
-
-// }
 
 func decodeString(data []byte, index int) string {
 	stringLength := int(data[index])
