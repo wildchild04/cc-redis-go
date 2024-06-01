@@ -28,6 +28,7 @@ const (
 	PSYNC    = "psync"
 	WAIT     = "wait"
 	CONFIG   = "config"
+	KEYS     = "keys"
 
 	//RESP3 reply
 	NULLS     = "_\r\n"
@@ -180,7 +181,7 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 	case PSYNC:
 		log.Println("Psync received", cmdInfo)
 		resync := respencoding.EncodeSimpleString("FULLRESYNC " + serverInfo[info.SERVER_MASTER_REPLID] + " 0")
-		rdbFile := rdb.BuildRDB()
+		rdbFile := rdb.BuildRDBFromMemory()
 		rdbFileSize := strconv.Itoa(len(rdbFile))
 		reply := make([]byte, 0, len(resync)+len(rdbFile)+10)
 		reply = append(reply, resync...)
@@ -205,6 +206,12 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 			}
 		}
 		return []byte(NULLS), false
+
+	case KEYS:
+		if cmdInfo.Args[0] == "*" {
+			kvsKeys := rs.kvs.Keys()
+			return respencoding.EncodeArray(kvsKeys), false
+		}
 	}
 
 	return respencoding.EncodeSimpleString("UNKNOWN CMD"), false

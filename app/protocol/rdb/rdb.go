@@ -3,17 +3,157 @@ package rdb
 import (
 	"encoding/base64"
 	"fmt"
+	"io"
+	"log"
+	"strconv"
 )
 
 const (
-	MAGIC_NUMBER          = "REDIS"
-	VERSION               = "0003"
-	EOF                   = 0xFF
-	AUXILIAR_FILED_HEADER = 0xFA
-	DB_SELECTOR           = 0xFE
+	MAGIC_NUMBER         = "REDIS"
+	VERSION              = "0003"
+	EOF                  = 0xFF
+	AUXILIAR_FILE_HEADER = 0xFA
+	RESIZE_DB            = 0xFB
+	DB_SELECTOR          = 0xFE
+	EXPIRE_PAIR_4_BYTE   = 0xFD
+	EXPIRE_PAIR_8_BYTE   = 0xFC
+	REDIS_VERSION        = "redis-ver"
+	REDIS_BITS           = "redis-bits"
+	CREATE_TIME          = "ctime"
+	USED_MEM             = "used-mem"
 )
 
-func BuildRDB() []byte {
+const (
+	STRING_LENGTH_ENCODING_SINGLE_BYTE = 0
+	STRING_LENGTH_ENCODING_DOUBLE_BYTE = 1
+)
+
+type RDBFile struct {
+	Kv []RDBSimplePair
+}
+
+type RDBSimplePair struct {
+	Key   string
+	Value string
+}
+
+func LoadRDBFile(file []byte) (*RDBFile, error) {
+	res := &RDBFile{Kv: make([]RDBSimplePair, 0, 1)}
+
+	currentMagicNumber := string(file[:len(MAGIC_NUMBER):len(MAGIC_NUMBER)])
+	bytesRead := len(MAGIC_NUMBER)
+	if !(currentMagicNumber == MAGIC_NUMBER) {
+		return nil, fmt.Errorf("Error, magic number does not match, current magic number:%s, expected:%s", currentMagicNumber, MAGIC_NUMBER)
+	}
+	currentVersion := string(file[bytesRead : bytesRead+len(VERSION) : bytesRead+len(VERSION)])
+	bytesRead += len(VERSION)
+
+	if !(currentVersion == VERSION) {
+		return nil, fmt.Errorf("Error, version does not match, current version:%s, expected:%s", currentVersion, VERSION)
+	}
+
+	nextSectionByte := file[bytesRead]
+
+	if nextSectionByte == AUXILIAR_FILE_HEADER {
+		_, auxBytesRead := readAuxiliarData(file[bytesRead:])
+		bytesRead += auxBytesRead
+	}
+
+	dbSelector := file[bytesRead]
+
+	if dbSelector == DB_SELECTOR {
+		bytesRead++
+		// dbNum := int(file[bytesRead])
+		bytesRead++
+	}
+
+	resizeDb := file[bytesRead]
+
+	if resizeDb == RESIZE_DB {
+		bytesRead++
+		numSize := getIntergerSize(file[bytesRead])
+		// hashSize := decodeInteger(file, bytesRead, numSize)
+		bytesRead += numSize
+		numSize = getIntergerSize(file[bytesRead])
+		// expHashSize := decodeInteger(file, bytesRead+1, getIntergerSize(file[bytesRead]))
+
+		bytesRead += numSize
+		bytesRead++
+	}
+
+	key := decodeString(file, bytesRead)
+	bytesRead += len(key) + 1
+	val := decodeString(file, bytesRead)
+
+	res.Kv = append(res.Kv, RDBSimplePair{Key: key, Value: val})
+
+	return res, nil
+}
+
+func readAuxiliarData(data []byte) (map[string]string, int) {
+	bytesRead := 0
+	max_tries := 3
+
+	result := make(map[string]string)
+	trie := 0
+	for {
+
+		prevRead := bytesRead
+		if bytesRead == prevRead {
+
+			if max_tries < trie {
+
+				panic("max tries")
+			}
+
+			trie++
+
+		}
+
+		if data[bytesRead] > 0xFB {
+			break
+		}
+		if data[bytesRead] == AUXILIAR_FILE_HEADER {
+			bytesRead++
+		}
+
+		dataKey := decodeString(data, bytesRead)
+		bytesRead += len(dataKey) + 1
+		switch dataKey {
+		case REDIS_VERSION:
+			version := decodeString(data, bytesRead)
+
+			result[string(dataKey)] = version
+			bytesRead += len(version) + 1
+		case REDIS_BITS:
+			redisBits := decodeInteger(data, bytesRead+1, getIntergerSize(data[bytesRead]))
+			result[string(dataKey)] = redisBits
+			bytesRead += 2
+		default:
+			bytesRead++
+		}
+	}
+
+	return result, bytesRead
+}
+
+func BuildRDBFromFileSystem(reader io.Reader, size int64) []byte {
+
+	buffer := make([]byte, size)
+
+	bytesRead, err := reader.Read(buffer)
+
+	if err != nil {
+		if err == io.EOF {
+			return buffer[:bytesRead]
+		}
+		log.Println("Error reading rbd file", err)
+	}
+
+	return buffer
+}
+
+func BuildRDBFromMemory() []byte {
 
 	res := make([]byte, 0, 1024)
 	//add MAGIC_NUMBER
@@ -34,6 +174,53 @@ func BuildRDB() []byte {
 	}
 
 	return data
+}
+
+func getIntergerSize(size byte) int {
+	msbs := size >> 6
+
+	possibleSize := msbs & 0b11
+	switch possibleSize {
+	case 0b00:
+		return 1
+	case 0b01:
+		return 2
+	case 0b10:
+		return 4
+	}
+	return 0
+}
+
+func decodeInteger(data []byte, index, size int) string {
+
+	switch size {
+	case 1:
+		return strconv.Itoa(int(data[index]))
+	default:
+		return ""
+	}
+
+}
+
+// func getStringLength(data []byte, index int) {
+// 	firtByte := data[index]
+
+// 	msbs := size >> 6
+
+// }
+
+func decodeString(data []byte, index int) string {
+	stringLength := int(data[index])
+	res := make([]byte, 0, stringLength)
+
+	for i := 0; i <= stringLength; i++ {
+
+		someByte := data[index+i]
+		if someByte > 32 {
+			res = append(res, someByte)
+		}
+	}
+	return string(res)
 }
 
 func encodeString(s string) ([]byte, error) {

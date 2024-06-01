@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/codecrafters-io/redis-starter-go/app/info"
+	"github.com/codecrafters-io/redis-starter-go/app/protocol/rdb"
 	"github.com/codecrafters-io/redis-starter-go/app/services"
 	"github.com/google/uuid"
 )
@@ -63,12 +65,28 @@ func (s *Server) Start() {
 	s.serverInfo[info.SERVER_ROLE] = serverOps.role
 	s.serverInfo[info.SERVER_PORT] = strconv.Itoa(serverOps.port)
 	s.serverInfo[info.SERVER_MASTER_REPLID] = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
-	if serverOps.rbdDir != "" {
+	if serverOps.rbdDir != "" && serverOps.rbdFileName != "" {
 		s.serverInfo[info.SERVER_RDB_DIR] = serverOps.rbdDir
-	}
 
-	if serverOps.rbdFileName != "" {
-		s.serverInfo[info.SERVER_RDB_FILE_NAME] = serverOps.rbdFileName
+		file, err := os.Open(fmt.Sprintf("%s/%s", serverOps.rbdDir, serverOps.rbdFileName))
+		if err != nil {
+			log.Printf("Error reading file at %s, error: %s", serverOps.rbdDir, err)
+		} else {
+
+			info, _ := file.Stat()
+
+			rdbBytes := rdb.BuildRDBFromFileSystem(file, info.Size())
+			rdbFile, err := rdb.LoadRDBFile(rdbBytes)
+
+			if err != nil {
+				log.Fatalf("Error loading rdb file %s", err)
+			}
+
+			for _, simplePair := range rdbFile.Kv {
+				s.kvs.Set(simplePair.Key, []byte(simplePair.Value))
+			}
+		}
+
 	}
 
 	if s.serverInfo[info.SERVER_ROLE] == info.ROLE_SLAVE {
@@ -87,6 +105,7 @@ func (s *Server) Start() {
 	}
 
 	if s.serverInfo[info.SERVER_ROLE] == info.ROLE_MASTER {
+
 		s.masterService = services.NewMasterService(s.metrics, s.connChan)
 		go s.masterService.HandleEvents()
 	}

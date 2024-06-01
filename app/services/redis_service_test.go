@@ -103,3 +103,7 @@ func (kvs *KvSMock) SetWithOptions(k string, v []byte, op KvsOptions) bool {
 
 	return true
 }
+
+func (kvs *KvSMock) Keys() [][]byte {
+	return nil
+}

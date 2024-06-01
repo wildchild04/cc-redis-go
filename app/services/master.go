@@ -114,7 +114,6 @@ func (m *masterServiceImpl) handleReplicationConn(conn net.Conn) {
 					log.Println("current offset", m.metrics.GetReplOffset())
 					m.metrics.PlusReplicationCount()
 					m.ackRepliedEventChan <- struct{}{}
-					log.Println("FFs")
 
 				}
 			}
