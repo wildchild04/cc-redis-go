@@ -13,6 +13,7 @@ type Kvs interface {
 	Get(k string) ([]byte, bool)
 	GetType(k string) string
 	Keys() [][]byte
+	SetStream(k string) bool
 }
 
 type KvsOptions struct {
@@ -34,6 +35,11 @@ type kvSService struct {
 
 func NewKvSService() Kvs {
 	return &kvSService{store: &sync.Map{}}
+}
+
+func (kvs *kvSService) SetStream(k string) bool {
+	kvs.store.Store(k, KvsObject{valueType: "stream"})
+	return true
 }
 
 func (kvs *kvSService) GetType(k string) string {

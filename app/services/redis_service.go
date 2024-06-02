@@ -30,6 +30,7 @@ const (
 	CONFIG   = "config"
 	KEYS     = "keys"
 	TYPE     = "type"
+	XADD     = "xadd"
 
 	//RESP3 reply
 	NULLS     = "_\r\n"
@@ -215,10 +216,11 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 		}
 	case TYPE:
 		key := cmdInfo.Args[0]
-
 		valueType := rs.kvs.GetType(key)
-
 		return respencoding.EncodeSimpleString(valueType), false
+	case XADD:
+		rs.kvs.SetStream(cmdInfo.Args[0])
+		return respencoding.EncodeBulkString([]byte(cmdInfo.Args[1])), false
 	}
 
 	return respencoding.EncodeSimpleString("UNKNOWN CMD"), false
