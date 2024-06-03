@@ -219,8 +219,23 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 		valueType := rs.kvs.GetType(key)
 		return respencoding.EncodeSimpleString(valueType), false
 	case XADD:
-		rs.kvs.SetStream(cmdInfo.Args[0])
-		return respencoding.EncodeBulkString([]byte(cmdInfo.Args[1])), false
+		if len(cmdInfo.Args) < 3 {
+			return respencoding.EncodeSimpleError("Not enough data"), false
+		}
+		data := make(map[string]any, 1)
+		for i := 2; i < len(cmdInfo.Args[2:]); i += 2 {
+			data[cmdInfo.Args[i]] = cmdInfo.Args[i+1]
+		}
+		stored, error := rs.kvs.SetStream(cmdInfo.Args[0], cmdInfo.Args[1], data)
+
+		if error != nil {
+			return respencoding.EncodeSimpleError(error.Error()), false
+		}
+		if stored {
+			return respencoding.EncodeBulkString([]byte(cmdInfo.Args[1])), false
+		} else {
+			return respencoding.EncodeSimpleError("ERR the stream as not saved"), false
+		}
 	}
 
 	return respencoding.EncodeSimpleString("UNKNOWN CMD"), false

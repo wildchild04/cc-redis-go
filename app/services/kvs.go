@@ -1,6 +1,9 @@
 package services
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -13,7 +16,11 @@ type Kvs interface {
 	Get(k string) ([]byte, bool)
 	GetType(k string) string
 	Keys() [][]byte
-	SetStream(k string) bool
+	SetStream(k, id string, data map[string]any) (bool, error)
+}
+
+type KvsObject interface {
+	GetType() string
 }
 
 type KvsOptions struct {
@@ -21,11 +28,61 @@ type KvsOptions struct {
 	timestamp uint64
 }
 
-type KvsObject struct {
-	data      []byte
-	created   *time.Time
-	expires   *time.Time
-	valueType string
+type KvsStringObject struct {
+	data    []byte
+	created *time.Time
+	expires *time.Time
+}
+
+func (kvsString KvsStringObject) GetType() string {
+	return "string"
+}
+
+type KvsStreamId struct {
+	milli    int64
+	sequence int
+}
+
+func newStreamId(id string) (KvsStreamId, error) {
+	idElements := strings.Split(id, "-")
+	millis, err := strconv.ParseInt(idElements[0], 10, 64)
+	sequence, err := strconv.Atoi(idElements[1])
+	if err != nil {
+		return KvsStreamId{}, fmt.Errorf("could not parse stream id %s, %w", id, err)
+	}
+	return KvsStreamId{milli: millis, sequence: sequence}, nil
+}
+
+func (sid KvsStreamId) String() string {
+	return fmt.Sprintf("%d-%d", sid.milli, sid.sequence)
+}
+
+func (sid KvsStreamId) isValidSequence(id KvsStreamId) (bool, error) {
+	fmt.Println(sid, id)
+	if sid.milli > id.milli {
+		if sid.sequence > id.sequence {
+			return false, fmt.Errorf("ERR The ID specified in XADD must be greater than %s", id)
+		}
+		return false, fmt.Errorf("ERR The ID specified in XADD is equal or smaller than the target stream top item")
+	}
+
+	if sid.milli == id.milli {
+		if sid.sequence == id.sequence {
+			return false, fmt.Errorf("ERR The ID specified in XADD is equal or smaller than the target stream top item")
+		}
+	}
+
+	return true, nil
+
+}
+
+type KvsStreamObject struct {
+	lastId KvsStreamId
+	data   map[string]any
+}
+
+func (kvsStream KvsStreamObject) GetType() string {
+	return "stream"
 }
 
 type kvSService struct {
@@ -37,9 +94,29 @@ func NewKvSService() Kvs {
 	return &kvSService{store: &sync.Map{}}
 }
 
-func (kvs *kvSService) SetStream(k string) bool {
-	kvs.store.Store(k, KvsObject{valueType: "stream"})
-	return true
+func (kvs *kvSService) SetStream(k, id string, data map[string]any) (bool, error) {
+	streamObject, found := kvs.store.Load(k)
+	currentStreamId, _ := newStreamId(id)
+	if !found {
+		kvs.store.Store(k, KvsStreamObject{lastId: currentStreamId, data: data})
+	} else {
+		stream, ok := streamObject.(KvsStreamObject)
+		if !ok {
+			return false, fmt.Errorf("Could not verify stream")
+		}
+		_, err := stream.lastId.isValidSequence(currentStreamId)
+		if err != nil {
+			return false, err
+		}
+
+		for k, v := range data {
+			stream.data[k] = v
+		}
+		stream.lastId = currentStreamId
+		kvs.store.Store(k, stream)
+	}
+
+	return true, nil
 }
 
 func (kvs *kvSService) GetType(k string) string {
@@ -51,16 +128,15 @@ func (kvs *kvSService) GetType(k string) string {
 	if !ok {
 		return "none"
 	}
-	return obj.valueType
+	return obj.GetType()
 }
 
 func (kvs *kvSService) Set(key string, value []byte) bool {
 
 	now := time.Now()
-	object := KvsObject{
-		data:      value,
-		created:   &now,
-		valueType: "string",
+	object := KvsStringObject{
+		data:    value,
+		created: &now,
 	}
 	kvs.size++
 	kvs.store.Store(key, object)
@@ -70,7 +146,7 @@ func (kvs *kvSService) Set(key string, value []byte) bool {
 
 func (kvs *kvSService) SetWithOptions(key string, value []byte, options KvsOptions) bool {
 
-	obj := KvsObject{
+	obj := KvsStringObject{
 		data: value,
 	}
 	if options.expires != 0 {
@@ -96,7 +172,7 @@ func (kvs *kvSService) SetWithOptions(key string, value []byte, options KvsOptio
 func (kvs *kvSService) Get(k string) ([]byte, bool) {
 
 	anyV, ok := kvs.store.Load(k)
-	obj, ok := anyV.(KvsObject)
+	obj, ok := anyV.(KvsStringObject)
 
 	if obj.expires != nil && obj.expires.Before(time.Now()) {
 		return nil, false
@@ -121,7 +197,7 @@ func NewKvsOptionsWithTimestamp(timestamp uint64) KvsOptions {
 	return KvsOptions{timestamp: timestamp}
 }
 
-func (kvs *kvSService) stampObject(ko *KvsObject, ex time.Duration) {
+func (kvs *kvSService) stampObject(ko *KvsStringObject, ex time.Duration) {
 	created := time.Now()
 	expires := created.Add(ex * time.Millisecond)
 
