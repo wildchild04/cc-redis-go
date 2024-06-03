@@ -231,8 +231,8 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 		if error != nil {
 			return respencoding.EncodeSimpleError(error.Error()), false
 		}
-		if stored {
-			return respencoding.EncodeBulkString([]byte(cmdInfo.Args[1])), false
+		if stored != "" {
+			return respencoding.EncodeBulkString([]byte(stored)), false
 		} else {
 			return respencoding.EncodeSimpleError("ERR the stream as not saved"), false
 		}

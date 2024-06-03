@@ -112,6 +112,6 @@ func (kvs *KvSMock) GetType(k string) string {
 	return ""
 }
 
-func (kvs *KvSMock) SetStream(k, id string, data map[string]any) (bool, error) {
-	return true, nil
+func (kvs *KvSMock) SetStream(k, id string, data map[string]any) (string, error) {
+	return "", nil
 }

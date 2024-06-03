@@ -16,7 +16,7 @@ type Kvs interface {
 	Get(k string) ([]byte, bool)
 	GetType(k string) string
 	Keys() [][]byte
-	SetStream(k, id string, data map[string]any) (bool, error)
+	SetStream(k, id string, data map[string]any) (string, error)
 }
 
 type KvsObject interface {
@@ -58,7 +58,6 @@ func (sid KvsStreamId) String() string {
 }
 
 func (sid KvsStreamId) isValidSequence(id KvsStreamId) (bool, error) {
-	fmt.Println(sid, id)
 	if sid.milli > id.milli {
 		if sid.sequence > id.sequence {
 			return false, fmt.Errorf("ERR The ID specified in XADD must be greater than %s", id)
@@ -73,7 +72,14 @@ func (sid KvsStreamId) isValidSequence(id KvsStreamId) (bool, error) {
 	}
 
 	return true, nil
+}
 
+func (sid KvsStreamId) generateNextSequence(millis int64) KvsStreamId {
+	if sid.milli == millis {
+		return KvsStreamId{milli: millis, sequence: sid.sequence + 1}
+	}
+
+	return KvsStreamId{milli: millis, sequence: 0}
 }
 
 type KvsStreamObject struct {
@@ -94,19 +100,33 @@ func NewKvSService() Kvs {
 	return &kvSService{store: &sync.Map{}}
 }
 
-func (kvs *kvSService) SetStream(k, id string, data map[string]any) (bool, error) {
+func (kvs *kvSService) SetStream(k, id string, data map[string]any) (string, error) {
 	streamObject, found := kvs.store.Load(k)
-	currentStreamId, _ := newStreamId(id)
+	currentStreamId, err := newStreamId(id)
+
+	if strings.Contains(id, "*") {
+		currentStreamId, err = newStreamId(strings.Replace(id, "*", "1", -1))
+	}
 	if !found {
+
+		if err != nil {
+			currentStreamId = KvsStreamId{}
+		}
+
 		kvs.store.Store(k, KvsStreamObject{lastId: currentStreamId, data: data})
 	} else {
+
 		stream, ok := streamObject.(KvsStreamObject)
 		if !ok {
-			return false, fmt.Errorf("Could not verify stream")
+			return "", fmt.Errorf("Could not verify stream")
+		}
+
+		if strings.Contains(id, "*") {
+			currentStreamId = stream.lastId.generateNextSequence(currentStreamId.milli)
 		}
 		_, err := stream.lastId.isValidSequence(currentStreamId)
 		if err != nil {
-			return false, err
+			return "", err
 		}
 
 		for k, v := range data {
@@ -116,7 +136,7 @@ func (kvs *kvSService) SetStream(k, id string, data map[string]any) (bool, error
 		kvs.store.Store(k, stream)
 	}
 
-	return true, nil
+	return currentStreamId.String(), nil
 }
 
 func (kvs *kvSService) GetType(k string) string {
