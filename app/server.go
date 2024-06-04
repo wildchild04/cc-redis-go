@@ -49,11 +49,12 @@ type serverOptions struct {
 }
 
 func NewServer() *Server {
+	streamSetEvent := make(chan string)
 	kvs := services.NewKvSService()
 	return &Server{
 		kvs:        kvs,
 		connChan:   make(chan net.Conn),
-		rs:         services.NewRedisService(kvs),
+		rs:         services.NewRedisService(kvs, streamSetEvent),
 		serverInfo: make(info.ServerInfo),
 		metrics:    info.NewMetrics(),
 	}

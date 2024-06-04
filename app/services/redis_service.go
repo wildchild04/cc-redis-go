@@ -50,7 +50,7 @@ type RedisService struct {
 	kvs Kvs
 }
 
-func NewRedisService(kvs Kvs) *RedisService {
+func NewRedisService(kvs Kvs, streamSetEven chan string) *RedisService {
 	return &RedisService{kvs}
 }
 
@@ -278,42 +278,72 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 
 		return stream.GetXRange(&lowerRange, &upperRange), false
 	case XREAD:
-
-		if cmdInfo.Args[0] == "streams" {
-
-			totalStreams := (len(cmdInfo.Args) - 1) / 2
-			xreadResp := make([][]byte, 0, totalStreams)
-
-			res := make([][]byte, 0, totalStreams)
-			for i := 0; i < totalStreams; i++ {
-				streams := make([][]byte, 0, totalStreams)
-				key := cmdInfo.Args[1+i]
-
-				from, err := newStreamId(cmdInfo.Args[totalStreams+1])
-
-				if err != nil {
-					return respencoding.EncodeSimpleError(err.Error()), false
-				}
-
-				stream := rs.kvs.GetStream(key)
-
-				streams = append(streams, respencoding.EncodeBulkString([]byte(key)))
-				streams = append(streams, respencoding.BuildArray([][]byte{stream.GetXRead(&from)}))
-
-				res = append(res, respencoding.BuildArray(streams))
+		streamCmd := false
+		streamsIndex := 0
+		var blockMilis int64
+		for i, cmdOp := range cmdInfo.Args {
+			switch cmdOp {
+			case "streams":
+				streamCmd = true
+				streamsIndex = i + 1
+			case "block":
+				blockMilis, _ = strconv.ParseInt(cmdInfo.Args[i+1], 10, 64)
 			}
-
-			for _, s := range res {
-				xreadResp = append(xreadResp, s)
-			}
-			return respencoding.BuildArray(xreadResp), false
 		}
 
-		return respencoding.EncodeSimpleError(cmdInfo.Args[0] + " is not a valid read option"), false
+		if streamCmd {
+			if blockMilis > 0 {
+				listener := make(chan string)
+				k := cmdInfo.Args[streamsIndex]
+				rs.kvs.SubscriveStreamEventListener(k, listener)
+				go func(millis int64) {
+					time.Sleep(time.Duration(millis) * time.Millisecond)
+					listener <- "none"
+				}(blockMilis)
+				event := <-listener
+				if event == "none" {
+					rs.kvs.UnsubscriveStreamEventListener(k)
+					return []byte(NULL_BULK), false
+				} else {
+					return rs.xRead(cmdInfo.Args[streamsIndex:]), false
+				}
+			} else {
+				return rs.xRead(cmdInfo.Args[streamsIndex:]), false
+			}
+		}
+		return respencoding.EncodeSimpleError(" invalid read cmd"), false
+	}
+	return respencoding.EncodeSimpleString("UNKNOWN CMD"), false
+}
 
+func (rs *RedisService) xRead(streams []string) []byte {
+
+	totalStreams := len(streams) / 2
+	xreadResp := make([][]byte, 0, totalStreams)
+
+	res := make([][]byte, 0, totalStreams)
+	for i := 0; i < totalStreams; i++ {
+		streamData := make([][]byte, 0, totalStreams)
+		key := streams[i]
+
+		from, err := newStreamId(streams[totalStreams+i])
+
+		if err != nil {
+			return respencoding.EncodeSimpleError(err.Error())
+		}
+
+		stream := rs.kvs.GetStream(key)
+
+		streamData = append(streamData, respencoding.EncodeBulkString([]byte(key)))
+		streamData = append(streamData, respencoding.BuildArray([][]byte{stream.GetXRead(&from)}))
+
+		res = append(res, respencoding.BuildArray(streamData))
 	}
 
-	return respencoding.EncodeSimpleString("UNKNOWN CMD"), false
+	for _, s := range res {
+		xreadResp = append(xreadResp, s)
+	}
+	return respencoding.BuildArray(xreadResp)
 }
 
 func buildKvsOptions(args []string) (KvsOptions, error) {

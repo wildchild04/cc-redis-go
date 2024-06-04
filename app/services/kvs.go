@@ -12,16 +12,6 @@ import (
 
 const NEVER_EXPIRE = -1
 
-type Kvs interface {
-	Set(k string, v []byte) bool
-	SetWithOptions(k string, v []byte, ops KvsOptions) bool
-	Get(k string) ([]byte, bool)
-	GetType(k string) string
-	Keys() [][]byte
-	SetStream(k, id string, data map[string]any) (string, error)
-	GetStream(k string) *KvsStream
-}
-
 type KvsObject interface {
 	GetType() string
 }
@@ -160,13 +150,34 @@ func (kvsStream KvsStreamObject) GetRespEncodign() [][]byte {
 	return res
 }
 
+type Kvs interface {
+	Set(k string, v []byte) bool
+	SetWithOptions(k string, v []byte, ops KvsOptions) bool
+	Get(k string) ([]byte, bool)
+	GetType(k string) string
+	Keys() [][]byte
+	SetStream(k, id string, data map[string]any) (string, error)
+	GetStream(k string) *KvsStream
+	SubscriveStreamEventListener(k string, listener chan string)
+	UnsubscriveStreamEventListener(k string)
+}
+
 type kvSService struct {
-	size  int64
-	store *sync.Map
+	size           int64
+	store          *sync.Map
+	setStreamEvent map[string]chan string
 }
 
 func NewKvSService() Kvs {
-	return &kvSService{store: &sync.Map{}}
+	return &kvSService{store: &sync.Map{}, setStreamEvent: make(map[string]chan string)}
+}
+
+func (kvs *kvSService) UnsubscriveStreamEventListener(k string) {
+	delete(kvs.setStreamEvent, k)
+}
+
+func (kvs *kvSService) SubscriveStreamEventListener(k string, listener chan string) {
+	kvs.setStreamEvent[k] = listener
 }
 
 func (kvs *kvSService) GetStream(k string) *KvsStream {
@@ -182,6 +193,7 @@ func (kvs *kvSService) GetStream(k string) *KvsStream {
 }
 
 func (kvs *kvSService) SetStream(k, id string, data map[string]any) (string, error) {
+
 	streamObject, found := kvs.store.Load(k)
 	var currentStreamId KvsStreamId
 	var err error
@@ -224,6 +236,9 @@ func (kvs *kvSService) SetStream(k, id string, data map[string]any) (string, err
 		kvs.store.Store(k, stream)
 	}
 
+	go func() {
+		kvs.setStreamEvent[k] <- k
+	}()
 	return currentStreamId.String(), nil
 }
 

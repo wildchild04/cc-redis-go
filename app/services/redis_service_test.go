@@ -119,3 +119,8 @@ func (kvs *KvSMock) SetStream(k, id string, data map[string]any) (string, error)
 func (kvs *KvSMock) GetStream(k string) *KvsStream {
 	return nil
 }
+
+func (kvs *KvSMock) SubscriveStreamEventListener(k string, listener chan string) {
+
+}
+func (kvs *KvSMock) UnsubscriveStreamEventListener(k string) {}
