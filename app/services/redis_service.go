@@ -247,9 +247,13 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 			lowerMilli, err := strconv.ParseInt(lowerString, 10, 64)
 
 			if err != nil {
-				lowerRange, err = newStreamId(lowerString)
-				if err != nil {
-					return respencoding.EncodeSimpleError("ERR invalid lower range id " + err.Error()), false
+				if cmdInfo.Args[1] == "-" {
+					lowerRange = KvsStreamId{}
+				} else {
+					lowerRange, err = newStreamId(lowerString)
+					if err != nil {
+						return respencoding.EncodeSimpleError("ERR invalid lower range id " + err.Error()), false
+					}
 				}
 			} else {
 				lowerRange = KvsStreamId{milli: lowerMilli}
