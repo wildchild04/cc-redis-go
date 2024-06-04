@@ -91,11 +91,18 @@ OuterLoop:
 				break OuterLoop
 			} else {
 
-				resp, shouldRegister := rs.getCmdResponse(&cmd, ctx)
-				log.Printf("response to %+v:\n%s\n", cmd, resp)
-				if resp != nil {
-					conn.Write(resp)
+				if cmd.CmdName == XREAD {
+					for i, cmdArg := range cmd.Args {
+						if cmdArg == "block" && cmd.Args[i+1] == "0" {
+							for {
+								rs.writeResponse(conn, &cmd, ctx)
+							}
+						}
+					}
+
 				}
+
+				shouldRegister := rs.writeResponse(conn, &cmd, ctx)
 				if shouldRegister {
 					registrationChan := ctx.Value(info.CTX_REPLACATION_REGISTRATION).(chan net.Conn)
 					registrationChan <- conn
@@ -119,6 +126,16 @@ OuterLoop:
 		log.Println("releaseing replication conn", conn.RemoteAddr())
 	}
 
+}
+
+func (rs *RedisService) writeResponse(conn net.Conn, cmd *parser.CmdInfo, ctx context.Context) bool {
+
+	resp, shouldRegister := rs.getCmdResponse(cmd, ctx)
+	log.Printf("response to %+v:\n%s\n", cmd, resp)
+	if resp != nil {
+		conn.Write(resp)
+	}
+	return shouldRegister
 }
 
 func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Context) ([]byte, bool) {
@@ -281,6 +298,7 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 		streamCmd := false
 		streamsIndex := 0
 		var blockMilis int64
+		blockMilis = -1
 		for i, cmdOp := range cmdInfo.Args {
 			switch cmdOp {
 			case "streams":
@@ -292,14 +310,16 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 		}
 
 		if streamCmd {
-			if blockMilis > 0 {
+			if blockMilis >= 0 {
 				listener := make(chan string)
 				k := cmdInfo.Args[streamsIndex]
 				rs.kvs.SubscriveStreamEventListener(k, listener)
-				go func(millis int64) {
-					time.Sleep(time.Duration(millis) * time.Millisecond)
-					listener <- "none"
-				}(blockMilis)
+				if blockMilis != 0 {
+					go func(millis int64) {
+						time.Sleep(time.Duration(millis) * time.Millisecond)
+						listener <- "none"
+					}(blockMilis)
+				}
 				event := <-listener
 				if event == "none" {
 					rs.kvs.UnsubscriveStreamEventListener(k)
@@ -307,6 +327,7 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 				} else {
 					return rs.xRead(cmdInfo.Args[streamsIndex:]), false
 				}
+
 			} else {
 				return rs.xRead(cmdInfo.Args[streamsIndex:]), false
 			}
@@ -320,7 +341,6 @@ func (rs *RedisService) xRead(streams []string) []byte {
 
 	totalStreams := len(streams) / 2
 	xreadResp := make([][]byte, 0, totalStreams)
-
 	res := make([][]byte, 0, totalStreams)
 	for i := 0; i < totalStreams; i++ {
 		streamData := make([][]byte, 0, totalStreams)
