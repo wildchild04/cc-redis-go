@@ -281,22 +281,32 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 
 		if cmdInfo.Args[0] == "streams" {
 
-			key := cmdInfo.Args[1]
+			totalStreams := (len(cmdInfo.Args) - 1) / 2
+			xreadResp := make([][]byte, 0, totalStreams)
 
-			from, err := newStreamId(cmdInfo.Args[2])
+			res := make([][]byte, 0, totalStreams)
+			for i := 0; i < totalStreams; i++ {
+				streams := make([][]byte, 0, totalStreams)
+				key := cmdInfo.Args[1+i]
 
-			if err != nil {
-				return respencoding.EncodeSimpleError(err.Error()), false
+				from, err := newStreamId(cmdInfo.Args[totalStreams+1])
+
+				if err != nil {
+					return respencoding.EncodeSimpleError(err.Error()), false
+				}
+
+				stream := rs.kvs.GetStream(key)
+
+				streams = append(streams, respencoding.EncodeBulkString([]byte(key)))
+				streams = append(streams, respencoding.BuildArray([][]byte{stream.GetXRead(&from)}))
+
+				res = append(res, respencoding.BuildArray(streams))
 			}
 
-			stream := rs.kvs.GetStream(key)
-
-			xreadResp := make([][]byte, 0, 2)
-
-			xreadResp = append(xreadResp, respencoding.EncodeBulkString([]byte(key)))
-			xreadResp = append(xreadResp, respencoding.BuildArray([][]byte{stream.GetXRead(&from)}))
-
-			return respencoding.BuildArray([][]byte{respencoding.BuildArray(xreadResp)}), false
+			for _, s := range res {
+				xreadResp = append(xreadResp, s)
+			}
+			return respencoding.BuildArray(xreadResp), false
 		}
 
 		return respencoding.EncodeSimpleError(cmdInfo.Args[0] + " is not a valid read option"), false
