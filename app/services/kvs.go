@@ -94,7 +94,26 @@ func (kvsStream KvsStream) GetType() string {
 	return "stream"
 }
 
-func (kvss KvsStream) GetRespEncodign(lowerRange, upperRange *KvsStreamId) []byte {
+func (kvss KvsStream) GetXRead(from *KvsStreamId) []byte {
+
+	streamBytes := make([][]byte, 0, len(kvss.objects))
+	for _, streamObject := range kvss.objects {
+		if streamObject.id.milli > from.milli ||
+			(streamObject.id.milli == from.milli &&
+				streamObject.id.sequence > from.sequence) {
+			dataBytes := make([][]byte, 0, len(streamObject.data))
+			for k, v := range streamObject.data {
+				dataBytes = append(dataBytes, respencoding.EncodeBulkString([]byte(k)))
+				dataBytes = append(dataBytes, respencoding.EncodeBulkString([]byte(v.(string))))
+			}
+			streamBytes = append(streamBytes, respencoding.EncodeBulkString([]byte(streamObject.id.String())))
+			streamBytes = append(streamBytes, respencoding.BuildArray(dataBytes))
+		}
+	}
+	return respencoding.BuildArray(streamBytes)
+}
+
+func (kvss KvsStream) GetXRange(lowerRange, upperRange *KvsStreamId) []byte {
 	res := make([][]byte, 0, len(kvss.objects))
 
 	for _, stream := range kvss.objects {

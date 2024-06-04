@@ -33,6 +33,7 @@ const (
 	TYPE     = "type"
 	XADD     = "xadd"
 	XRANGE   = "xrange"
+	XREAD    = "xread"
 
 	//RESP3 reply
 	NULLS     = "_\r\n"
@@ -275,7 +276,31 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 			}
 		}
 
-		return stream.GetRespEncodign(&lowerRange, &upperRange), false
+		return stream.GetXRange(&lowerRange, &upperRange), false
+	case XREAD:
+
+		if cmdInfo.Args[0] == "streams" {
+
+			key := cmdInfo.Args[1]
+
+			from, err := newStreamId(cmdInfo.Args[2])
+
+			if err != nil {
+				return respencoding.EncodeSimpleError(err.Error()), false
+			}
+
+			stream := rs.kvs.GetStream(key)
+
+			xreadResp := make([][]byte, 0, 2)
+
+			xreadResp = append(xreadResp, respencoding.EncodeBulkString([]byte(key)))
+			xreadResp = append(xreadResp, respencoding.BuildArray([][]byte{stream.GetXRead(&from)}))
+
+			return respencoding.BuildArray([][]byte{respencoding.BuildArray(xreadResp)}), false
+		}
+
+		return respencoding.EncodeSimpleError(cmdInfo.Args[0] + " is not a valid read option"), false
+
 	}
 
 	return respencoding.EncodeSimpleString("UNKNOWN CMD"), false
