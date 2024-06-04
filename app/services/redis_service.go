@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"strconv"
 	"strings"
@@ -260,9 +261,14 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 			}
 			upperMilli, err := strconv.ParseInt(upperString, 10, 64)
 			if err != nil {
-				upperRange, err = newStreamId(upperString)
-				if err != nil {
-					return respencoding.EncodeSimpleError("ERR invalid upper range arg " + err.Error()), false
+				if cmdInfo.Args[2] == "+" {
+					upperRange = KvsStreamId{milli: math.MaxInt64, sequence: math.MaxInt}
+				} else {
+
+					upperRange, err = newStreamId(upperString)
+					if err != nil {
+						return respencoding.EncodeSimpleError("ERR invalid upper range arg " + err.Error()), false
+					}
 				}
 			} else {
 				upperRange = KvsStreamId{milli: upperMilli}
