@@ -31,6 +31,7 @@ const (
 	KEYS     = "keys"
 	TYPE     = "type"
 	XADD     = "xadd"
+	XRANGE   = "xrange"
 
 	//RESP3 reply
 	NULLS     = "_\r\n"
@@ -223,7 +224,7 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 			return respencoding.EncodeSimpleError("Not enough data"), false
 		}
 		data := make(map[string]any, 1)
-		for i := 2; i < len(cmdInfo.Args[2:]); i += 2 {
+		for i := 2; i < len(cmdInfo.Args); i += 2 {
 			data[cmdInfo.Args[i]] = cmdInfo.Args[i+1]
 		}
 		stored, error := rs.kvs.SetStream(cmdInfo.Args[0], cmdInfo.Args[1], data)
@@ -236,6 +237,35 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 		} else {
 			return respencoding.EncodeSimpleError("ERR the stream as not saved"), false
 		}
+	case XRANGE:
+		stream := rs.kvs.GetStream(cmdInfo.Args[0])
+		var lowerRange, upperRange KvsStreamId
+		if len(cmdInfo.Args) == 3 {
+
+			lowerString := cmdInfo.Args[1]
+			upperString := cmdInfo.Args[2]
+			lowerMilli, err := strconv.ParseInt(lowerString, 10, 64)
+
+			if err != nil {
+				lowerRange, err = newStreamId(lowerString)
+				if err != nil {
+					return respencoding.EncodeSimpleError("ERR invalid lower range id " + err.Error()), false
+				}
+			} else {
+				lowerRange = KvsStreamId{milli: lowerMilli}
+			}
+			upperMilli, err := strconv.ParseInt(upperString, 10, 64)
+			if err != nil {
+				upperRange, err = newStreamId(upperString)
+				if err != nil {
+					return respencoding.EncodeSimpleError("ERR invalid upper range arg " + err.Error()), false
+				}
+			} else {
+				upperRange = KvsStreamId{milli: upperMilli}
+			}
+		}
+
+		return stream.GetRespEncodign(&lowerRange, &upperRange), false
 	}
 
 	return respencoding.EncodeSimpleString("UNKNOWN CMD"), false

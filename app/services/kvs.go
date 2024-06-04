@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	respencoding "github.com/codecrafters-io/redis-starter-go/app/protocol/resp_encoding"
 )
 
 const NEVER_EXPIRE = -1
@@ -17,6 +19,7 @@ type Kvs interface {
 	GetType(k string) string
 	Keys() [][]byte
 	SetStream(k, id string, data map[string]any) (string, error)
+	GetStream(k string) *KvsStream
 }
 
 type KvsObject interface {
@@ -82,13 +85,60 @@ func (sid KvsStreamId) generateNextSequence(millis int64) KvsStreamId {
 	return KvsStreamId{milli: millis, sequence: 0}
 }
 
-type KvsStreamObject struct {
-	lastId KvsStreamId
-	data   map[string]any
+type KvsStream struct {
+	lastId  KvsStreamId
+	objects []KvsStreamObject
 }
 
-func (kvsStream KvsStreamObject) GetType() string {
+func (kvsStream KvsStream) GetType() string {
 	return "stream"
+}
+
+func (kvss KvsStream) GetRespEncodign(lowerRange, upperRange *KvsStreamId) []byte {
+	res := make([][]byte, 0, len(kvss.objects))
+
+	for _, stream := range kvss.objects {
+		streamBytes := make([][]byte, 0, 2)
+		if stream.id.milli >= lowerRange.milli && stream.id.sequence >= lowerRange.sequence &&
+			stream.id.milli <= upperRange.milli && stream.id.sequence <= upperRange.sequence {
+			encodeId := respencoding.EncodeBulkString([]byte(stream.id.String()))
+			dataBytes := make([][]byte, 0, len(stream.data))
+			for k, v := range stream.data {
+				dataBytes = append(dataBytes, []byte(k))
+				dataBytes = append(dataBytes, []byte(v.(string)))
+			}
+			streamBytes = append(streamBytes, encodeId)
+			streamBytes = append(streamBytes, respencoding.EncodeArray(dataBytes))
+			res = append(res, respencoding.BuildArray(streamBytes))
+		}
+
+	}
+
+	return respencoding.BuildArray(res)
+}
+
+type KvsStreamObject struct {
+	id   KvsStreamId
+	data map[string]any
+}
+
+func (kvsStream KvsStreamObject) GetRespEncodign() [][]byte {
+
+	res := make([][]byte, 0, len(kvsStream.data)+1)
+
+	res = append(res, []byte(kvsStream.id.String()))
+
+	for k, v := range kvsStream.data {
+		res = append(res, []byte(k))
+
+		switch v.(type) {
+		case string:
+			res = append(res, []byte(v.(string)))
+		}
+
+	}
+
+	return res
 }
 
 type kvSService struct {
@@ -98,6 +148,18 @@ type kvSService struct {
 
 func NewKvSService() Kvs {
 	return &kvSService{store: &sync.Map{}}
+}
+
+func (kvs *kvSService) GetStream(k string) *KvsStream {
+	streamObject, found := kvs.store.Load(k)
+	if found {
+		stream, ok := streamObject.(KvsStream)
+		if ok {
+			return &stream
+		}
+	}
+
+	return nil
 }
 
 func (kvs *kvSService) SetStream(k, id string, data map[string]any) (string, error) {
@@ -117,10 +179,15 @@ func (kvs *kvSService) SetStream(k, id string, data map[string]any) (string, err
 			currentStreamId = KvsStreamId{}
 		}
 
-		kvs.store.Store(k, KvsStreamObject{lastId: currentStreamId, data: data})
+		kvs.store.Store(k, KvsStream{
+			lastId: currentStreamId,
+			objects: []KvsStreamObject{
+				{id: currentStreamId, data: data},
+			},
+		})
 	} else {
 
-		stream, ok := streamObject.(KvsStreamObject)
+		stream, ok := streamObject.(KvsStream)
 		if !ok {
 			return "", fmt.Errorf("Could not verify stream")
 		}
@@ -133,10 +200,7 @@ func (kvs *kvSService) SetStream(k, id string, data map[string]any) (string, err
 		if err != nil {
 			return "", err
 		}
-
-		for k, v := range data {
-			stream.data[k] = v
-		}
+		stream.objects = append(stream.objects, KvsStreamObject{currentStreamId, data})
 		stream.lastId = currentStreamId
 		kvs.store.Store(k, stream)
 	}
