@@ -91,6 +91,9 @@ func (kvss KvsStream) GetXRead(from *KvsStreamId) []byte {
 		if streamObject.id.milli > from.milli ||
 			(streamObject.id.milli == from.milli &&
 				streamObject.id.sequence > from.sequence) {
+			if from.milli == -1 && kvss.lastId.milli >= streamObject.id.milli && kvss.lastId.sequence >= streamObject.id.sequence {
+				continue
+			}
 			dataBytes := make([][]byte, 0, len(streamObject.data))
 			for k, v := range streamObject.data {
 				dataBytes = append(dataBytes, respencoding.EncodeBulkString([]byte(k)))
@@ -195,6 +198,8 @@ func (kvs *kvSService) GetStream(k string) *KvsStream {
 func (kvs *kvSService) SetStream(k, id string, data map[string]any) (string, error) {
 
 	streamObject, found := kvs.store.Load(k)
+
+	prevId := ""
 	var currentStreamId KvsStreamId
 	var err error
 	if id == "*" {
@@ -219,6 +224,7 @@ func (kvs *kvSService) SetStream(k, id string, data map[string]any) (string, err
 	} else {
 
 		stream, ok := streamObject.(KvsStream)
+		prevId = stream.lastId.String()
 		if !ok {
 			return "", fmt.Errorf("Could not verify stream")
 		}
@@ -237,7 +243,7 @@ func (kvs *kvSService) SetStream(k, id string, data map[string]any) (string, err
 	}
 
 	go func() {
-		kvs.setStreamEvent[k] <- k
+		kvs.setStreamEvent[k] <- fmt.Sprintf("%s,%s", k, prevId)
 	}()
 	return currentStreamId.String(), nil
 }
