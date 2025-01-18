@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/codecrafters-io/redis-starter-go/app/info"
-	"github.com/codecrafters-io/redis-starter-go/app/protocol/rdb"
+	redisdb "github.com/codecrafters-io/redis-starter-go/app/protocol/redis-db"
 	"github.com/codecrafters-io/redis-starter-go/app/services"
 	"github.com/google/uuid"
 )
@@ -75,8 +75,8 @@ func (s *Server) Start() {
 
 			info, _ := file.Stat()
 
-			rdbBytes := rdb.BuildRDBFromFileSystem(file, info.Size())
-			rdbFile, err := rdb.LoadRDBFile(rdbBytes)
+			rdbBytes := redisdb.BuildRDBFromFileSystem(file, info.Size())
+			rdbFile, err := redisdb.LoadRDBFile(rdbBytes)
 
 			if err != nil {
 				log.Fatalf("Error loading rdb file %s", err)

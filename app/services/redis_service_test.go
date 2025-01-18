@@ -107,3 +107,11 @@ func (kvs *KvSMock) SetWithOptions(k string, v []byte, op KvsOptions) bool {
 func (kvs *KvSMock) Keys() [][]byte {
 	return nil
 }
+
+func (kvs *KvSMock) GetType(k string) string {
+	return ""
+}
+
+func (kvs *KvSMock) SetStream(k string) bool {
+	return false
+}

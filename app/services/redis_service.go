@@ -13,7 +13,7 @@ import (
 
 	"github.com/codecrafters-io/redis-starter-go/app/info"
 	"github.com/codecrafters-io/redis-starter-go/app/protocol/parser"
-	"github.com/codecrafters-io/redis-starter-go/app/protocol/rdb"
+	redisdb "github.com/codecrafters-io/redis-starter-go/app/protocol/redis-db"
 	respencoding "github.com/codecrafters-io/redis-starter-go/app/protocol/resp_encoding"
 )
 
@@ -183,7 +183,7 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 	case PSYNC:
 		log.Println("Psync received", cmdInfo)
 		resync := respencoding.EncodeSimpleString("FULLRESYNC " + serverInfo[info.SERVER_MASTER_REPLID] + " 0")
-		rdbFile := rdb.BuildRDBFromMemory()
+		rdbFile := redisdb.BuildRDBFromMemory()
 		rdbFileSize := strconv.Itoa(len(rdbFile))
 		reply := make([]byte, 0, len(resync)+len(rdbFile)+10)
 		reply = append(reply, resync...)
