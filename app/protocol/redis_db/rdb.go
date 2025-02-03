@@ -11,7 +11,7 @@ import (
 
 const (
 	MAGIC_NUMBER         = "REDIS"
-	VERSION              = "0003"
+	VERSION              = "0011"
 	EOF                  = 0xFF
 	AUXILIAR_FILE_HEADER = 0xFA
 	RESIZE_DB            = 0xFB

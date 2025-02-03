@@ -34,6 +34,7 @@ const (
 	XADD     = "xadd"
 	XRANGE   = "xrange"
 	XREAD    = "xread"
+	INCR     = "incr"
 
 	//RESP3 reply
 	NULLS     = "_\r\n"
@@ -90,16 +91,6 @@ OuterLoop:
 				shouldclose = false
 				break OuterLoop
 			} else {
-
-				if cmd.CmdName == XREAD {
-					for i, cmdArg := range cmd.Args {
-						if cmdArg == "block" && cmd.Args[i+1] == "0" {
-							for {
-								rs.writeResponse(conn, &cmd, ctx)
-							}
-						}
-					}
-				}
 
 				shouldRegister := rs.writeResponse(conn, &cmd, ctx)
 				if shouldRegister {
@@ -312,11 +303,9 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 				listener := make(chan string)
 				k := cmdInfo.Args[streamsIndex]
 				rs.kvs.SubscriveStreamEventListener(k, listener)
-				go func(millis int64) {
-					time.Sleep(time.Duration(millis) * time.Millisecond)
-					listener <- "none"
-				}(blockMilis)
-				if blockMilis != 0 {
+
+				if blockMilis > 0 {
+
 					go func(millis int64) {
 						time.Sleep(time.Duration(millis) * time.Millisecond)
 						listener <- "none"
@@ -334,7 +323,25 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 				return rs.xRead(cmdInfo.Args[streamsIndex:], ""), false
 			}
 		}
-		return respencoding.EncodeSimpleError(" invalid read cmd"), false
+		return respencoding.EncodeSimpleError("invalid read cmd"), false
+
+	case INCR:
+		key := cmdInfo.Args[0]
+		val, exist := rs.kvs.Get(key)
+		if !exist {
+			Kvs.Set(rs.kvs, key, []byte("1"))
+		}
+		num, err := strconv.Atoi(string(val))
+
+		if err != nil {
+			return respencoding.EncodeSimpleError(fmt.Sprintf("key %s is not a number", key)), false
+		}
+
+		num++
+		numBytes := []byte(strconv.Itoa(num))
+		rs.kvs.Set(key, numBytes)
+
+		return respencoding.EncodeInteger(num), false
 
 	}
 
@@ -342,7 +349,6 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 }
 
 func (rs *RedisService) xRead(streams []string, prevId string) []byte {
-
 	totalStreams := len(streams) / 2
 	xreadResp := make([][]byte, 0, totalStreams)
 	res := make([][]byte, 0, totalStreams)
