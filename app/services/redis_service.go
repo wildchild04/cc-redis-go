@@ -335,7 +335,7 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 		num, err := strconv.Atoi(string(val))
 
 		if err != nil {
-			return respencoding.EncodeSimpleError(fmt.Sprintf("key %s is not a number", key)), false
+			return respencoding.EncodeSimpleError("ERR value is not an integer or out of range"), false
 		}
 
 		num++
