@@ -330,6 +330,7 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 		val, exist := rs.kvs.Get(key)
 		if !exist {
 			Kvs.Set(rs.kvs, key, []byte("1"))
+			val = []byte("0")
 		}
 		num, err := strconv.Atoi(string(val))
 
