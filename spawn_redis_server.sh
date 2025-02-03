@@ -6,7 +6,6 @@
 #
 # DON'T EDIT THIS!
 set -e
-ls ./app/protocol/redis-db/
 tmpFile=$(mktemp)
 go build -o "$tmpFile" app/*.go
 exec "$tmpFile" "$@"

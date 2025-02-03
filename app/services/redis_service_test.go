@@ -16,7 +16,7 @@ func Test_getCmdResponse(t *testing.T) {
 	tests := []struct {
 		input    parser.CmdInfo
 		expected []byte
-		store    map[string]KvsObject
+		store    map[string]KvsStringObject
 		ctx      context.Context
 	}{
 		{
@@ -37,7 +37,7 @@ func Test_getCmdResponse(t *testing.T) {
 				CmdName: GET,
 				Args:    []string{"test"},
 			},
-			store: map[string]KvsObject{
+			store: map[string]KvsStringObject{
 				"test": {
 					data: []byte("pog"),
 				},
@@ -49,7 +49,7 @@ func Test_getCmdResponse(t *testing.T) {
 				CmdName: SET,
 				Args:    []string{"test", "pog"},
 			},
-			store:    map[string]KvsObject{},
+			store:    map[string]KvsStringObject{},
 			expected: []byte("+OK\r\n"),
 		},
 		{
@@ -57,7 +57,7 @@ func Test_getCmdResponse(t *testing.T) {
 				CmdName: SET,
 				Args:    []string{"test", "pog", "px", "100"},
 			},
-			store:    map[string]KvsObject{},
+			store:    map[string]KvsStringObject{},
 			expected: []byte("+OK\r\n"),
 		},
 		{
@@ -65,7 +65,7 @@ func Test_getCmdResponse(t *testing.T) {
 				CmdName: SET,
 				Args:    []string{"test", "pog", "px"},
 			},
-			store:    map[string]KvsObject{},
+			store:    map[string]KvsStringObject{},
 			expected: []byte("-Missing PX value\r\n"),
 		},
 	}
@@ -85,7 +85,7 @@ func Test_getCmdResponse(t *testing.T) {
 }
 
 type KvSMock struct {
-	store map[string]KvsObject
+	store map[string]KvsStringObject
 }
 
 func (kvs *KvSMock) Get(k string) ([]byte, bool) {
@@ -95,7 +95,7 @@ func (kvs *KvSMock) Get(k string) ([]byte, bool) {
 }
 
 func (kvs *KvSMock) Set(k string, v []byte) bool {
-	kvs.store[k] = KvsObject{data: v}
+	kvs.store[k] = KvsStringObject{data: v}
 	return true
 }
 
@@ -112,6 +112,14 @@ func (kvs *KvSMock) GetType(k string) string {
 	return ""
 }
 
-func (kvs *KvSMock) SetStream(k string) bool {
-	return false
+func (kvs *KvSMock) SetStream(k, id string, data map[string]any) (string, error) {
+	return "", nil
 }
+
+func (kvs *KvSMock) GetStream(k string) *KvsStream {
+	return nil
+}
+
+func (kvs *KvSMock) SubscriveStreamEventListener(k string, listener chan string) {}
+
+func (kvs *KvSMock) UnsubscriveStreamEventListener(k string) {}

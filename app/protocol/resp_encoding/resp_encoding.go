@@ -57,6 +57,17 @@ func EncodeInteger(i int) []byte {
 	return byteResp
 }
 
+func BuildArray(encodedElements [][]byte) []byte {
+	res := make([]byte, 0, len(encodedElements)+10)
+	res = append(res, '*')
+	res = append(res, []byte(strconv.Itoa(len(encodedElements)))...)
+	res = append(res, []byte(parser.CRNL)...)
+	for _, ele := range encodedElements {
+		res = append(res, ele...)
+	}
+	return res
+}
+
 func EncodeSimpleError(s string) []byte {
 
 	byteResp := make([]byte, 0, len(s)+3)
