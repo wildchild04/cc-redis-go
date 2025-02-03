@@ -35,6 +35,7 @@ const (
 	XRANGE   = "xrange"
 	XREAD    = "xread"
 	INCR     = "incr"
+	MULTI    = "multi"
 
 	//RESP3 reply
 	NULLS     = "_\r\n"
@@ -48,11 +49,12 @@ const (
 )
 
 type RedisService struct {
-	kvs Kvs
+	multiQueue []*parser.CmdInfo
+	kvs        Kvs
 }
 
 func NewRedisService(kvs Kvs, streamSetEven chan string) *RedisService {
-	return &RedisService{kvs}
+	return &RedisService{kvs: kvs}
 }
 
 func (rs *RedisService) HandleConn(conn net.Conn, ctx context.Context) {
@@ -90,6 +92,9 @@ OuterLoop:
 				}
 				shouldclose = false
 				break OuterLoop
+			} else if rs.multiQueue != nil {
+				rs.multiQueue = append(rs.multiQueue, &cmd)
+				conn.Write(respencoding.EncodeSimpleString("QUEUED"))
 			} else {
 
 				shouldRegister := rs.writeResponse(conn, &cmd, ctx)
@@ -344,6 +349,9 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 
 		return respencoding.EncodeInteger(num), false
 
+	case MULTI:
+		rs.multiQueue = make([]*parser.CmdInfo, 0, 10)
+		return respencoding.EncodeSimpleString("OK"), false
 	}
 
 	return respencoding.EncodeSimpleString("UNKNOWN CMD"), false
