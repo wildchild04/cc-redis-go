@@ -36,6 +36,7 @@ const (
 	XREAD    = "xread"
 	INCR     = "incr"
 	MULTI    = "multi"
+	EXEC     = "exec"
 
 	//RESP3 reply
 	NULLS     = "_\r\n"
@@ -92,7 +93,7 @@ OuterLoop:
 				}
 				shouldclose = false
 				break OuterLoop
-			} else if rs.multiQueue != nil {
+			} else if rs.multiQueue != nil && cmd.CmdName != EXEC {
 				rs.multiQueue = append(rs.multiQueue, &cmd)
 				conn.Write(respencoding.EncodeSimpleString("QUEUED"))
 			} else {
@@ -352,6 +353,20 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 	case MULTI:
 		rs.multiQueue = make([]*parser.CmdInfo, 0, 10)
 		return respencoding.EncodeSimpleString("OK"), false
+
+	case EXEC:
+		if rs.multiQueue == nil {
+			return respencoding.EncodeSimpleError("ERR EXEC without MULTI"), false
+		}
+		responses := make([][]byte, 0, len(rs.multiQueue))
+		for _, cmd := range rs.multiQueue {
+			resp, _ := rs.getCmdResponse(cmd, ctx)
+			responses = append(responses, resp)
+
+		}
+
+		rs.multiQueue = nil
+		return respencoding.BuildArray(responses), false
 	}
 
 	return respencoding.EncodeSimpleString("UNKNOWN CMD"), false
