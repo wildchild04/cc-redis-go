@@ -50,12 +50,12 @@ const (
 )
 
 type RedisService struct {
-	multiQueue []*parser.CmdInfo
+	multiQueue map[string][]*parser.CmdInfo
 	kvs        Kvs
 }
 
 func NewRedisService(kvs Kvs, streamSetEven chan string) *RedisService {
-	return &RedisService{kvs: kvs}
+	return &RedisService{kvs: kvs, multiQueue: make(map[string][]*parser.CmdInfo, 10)}
 }
 
 func (rs *RedisService) HandleConn(conn net.Conn, ctx context.Context) {
@@ -93,10 +93,15 @@ OuterLoop:
 				}
 				shouldclose = false
 				break OuterLoop
-			} else if rs.multiQueue != nil && cmd.CmdName != EXEC {
-				rs.multiQueue = append(rs.multiQueue, &cmd)
+			} else if rs.multiQueue[conn.RemoteAddr().String()] != nil && cmd.CmdName != EXEC {
+				log.Printf("Adding cmd %s to queue %s\n", cmd.CmdName, rs.multiQueue[conn.RemoteAddr().String()])
+				rs.multiQueue[conn.RemoteAddr().String()] = append(rs.multiQueue[conn.RemoteAddr().String()], &cmd)
 				conn.Write(respencoding.EncodeSimpleString("QUEUED"))
 			} else {
+
+				if cmd.CmdName == EXEC || cmd.CmdName == MULTI {
+					cmd.Args = append(cmd.Args, conn.RemoteAddr().String())
+				}
 
 				shouldRegister := rs.writeResponse(conn, &cmd, ctx)
 				if shouldRegister {
@@ -351,21 +356,23 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 		return respencoding.EncodeInteger(num), false
 
 	case MULTI:
-		rs.multiQueue = make([]*parser.CmdInfo, 0, 10)
+		remote := cmdInfo.Args[0]
+		rs.multiQueue[remote] = make([]*parser.CmdInfo, 0, 10)
 		return respencoding.EncodeSimpleString("OK"), false
 
 	case EXEC:
-		if rs.multiQueue == nil {
+		remote := cmdInfo.Args[0]
+		if rs.multiQueue[remote] == nil {
 			return respencoding.EncodeSimpleError("ERR EXEC without MULTI"), false
 		}
-		responses := make([][]byte, 0, len(rs.multiQueue))
-		for _, cmd := range rs.multiQueue {
+		responses := make([][]byte, 0, len(rs.multiQueue[remote]))
+		for _, cmd := range rs.multiQueue[remote] {
 			resp, _ := rs.getCmdResponse(cmd, ctx)
 			responses = append(responses, resp)
 
 		}
 
-		rs.multiQueue = nil
+		rs.multiQueue[remote] = nil
 		return respencoding.BuildArray(responses), false
 	}
 
