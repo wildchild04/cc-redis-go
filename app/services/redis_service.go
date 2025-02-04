@@ -37,6 +37,7 @@ const (
 	INCR     = "incr"
 	MULTI    = "multi"
 	EXEC     = "exec"
+	DISCARD  = "discard"
 
 	//RESP3 reply
 	NULLS     = "_\r\n"
@@ -93,13 +94,13 @@ OuterLoop:
 				}
 				shouldclose = false
 				break OuterLoop
-			} else if rs.multiQueue[conn.RemoteAddr().String()] != nil && cmd.CmdName != EXEC {
+			} else if rs.multiQueue[conn.RemoteAddr().String()] != nil && cmd.CmdName != EXEC && cmd.CmdName != DISCARD {
 				log.Printf("Adding cmd %s to queue %s\n", cmd.CmdName, rs.multiQueue[conn.RemoteAddr().String()])
 				rs.multiQueue[conn.RemoteAddr().String()] = append(rs.multiQueue[conn.RemoteAddr().String()], &cmd)
 				conn.Write(respencoding.EncodeSimpleString("QUEUED"))
 			} else {
 
-				if cmd.CmdName == EXEC || cmd.CmdName == MULTI {
+				if cmd.CmdName == EXEC || cmd.CmdName == MULTI || cmd.CmdName == DISCARD {
 					cmd.Args = append(cmd.Args, conn.RemoteAddr().String())
 				}
 
@@ -374,6 +375,17 @@ func (rs *RedisService) getCmdResponse(cmdInfo *parser.CmdInfo, ctx context.Cont
 
 		rs.multiQueue[remote] = nil
 		return respencoding.BuildArray(responses), false
+
+	case DISCARD:
+		remote := cmdInfo.Args[0]
+		_, exits := rs.multiQueue[remote]
+		if exits {
+			delete(rs.multiQueue, remote)
+			return respencoding.EncodeSimpleString("OK"), false
+		}
+
+		return respencoding.EncodeSimpleError("ERR DISCARD without MULTI"), false
+
 	}
 
 	return respencoding.EncodeSimpleString("UNKNOWN CMD"), false
